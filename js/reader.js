@@ -1,0 +1,4369 @@
+"use strict";
+/* ================================================================
+   Ultra Pro Reader — merged single-file app
+   ================================================================ */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const uid = () => 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const ttsOK = 'speechSynthesis' in window;
+const isMobileSpeech = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+const PAGE_WORDS = 420;
+const synth = window.speechSynthesis;
+
+/* ---------- Languages ---------- */
+const LANGS = [["Afrikaans","af"],["Albanian","sq"],["Amharic","am"],["Arabic","ar"],["Armenian","hy"],["Assamese","as"],["Aymara","ay"],["Azerbaijani","az"],["Bambara","bm"],["Basque","eu"],["Belarusian","be"],["Bengali","bn"],["Bhojpuri","bho"],["Bosnian","bs"],["Bulgarian","bg"],["Catalan","ca"],["Cebuano","ceb"],["Chinese (Simplified)","zh-CN"],["Chinese (Traditional)","zh-TW"],["Corsican","co"],["Croatian","hr"],["Czech","cs"],["Danish","da"],["Dhivehi","dv"],["Dogri","doi"],["Dutch","nl"],["English","en"],["Esperanto","eo"],["Estonian","et"],["Ewe","ee"],["Filipino (Tagalog)","tl"],["Finnish","fi"],["French","fr"],["Frisian","fy"],["Galician","gl"],["Georgian","ka"],["German","de"],["Greek","el"],["Guarani","gn"],["Gujarati","gu"],["Haitian Creole","ht"],["Hausa","ha"],["Hawaiian","haw"],["Hebrew","he"],["Hindi","hi"],["Hmong","hmn"],["Hungarian","hu"],["Icelandic","is"],["Igbo","ig"],["Ilocano","ilo"],["Indonesian","id"],["Irish","ga"],["Italian","it"],["Japanese","ja"],["Javanese","jv"],["Kannada","kn"],["Kazakh","kk"],["Khmer","km"],["Kinyarwanda","rw"],["Konkani","gom"],["Korean","ko"],["Krio","kri"],["Kurdish (Kurmanji)","kmr"],["Kurdish (Sorani)","ckb"],["Kyrgyz","ky"],["Lao","lo"],["Latin","la"],["Latvian","lv"],["Lingala","ln"],["Lithuanian","lt"],["Luganda","lg"],["Luxembourgish","lb"],["Macedonian","mk"],["Maithili","mai"],["Malagasy","mg"],["Malay","ms"],["Malayalam","ml"],["Maltese","mt"],["Maori","mi"],["Marathi","mr"],["Meiteilon (Manipuri)","mni-Mtei"],["Mizo","lus"],["Mongolian","mn"],["Myanmar (Burmese)","my"],["Nepali","ne"],["Norwegian","no"],["Nyanja (Chichewa)","ny"],["Odia (Oriya)","or"],["Oromo","om"],["Pashto","ps"],["Persian","fa"],["Polish","pl"],["Portuguese","pt"],["Punjabi","pa"],["Quechua","qu"],["Romanian","ro"],["Russian","ru"],["Samoan","sm"],["Sanskrit","sa"],["Scots Gaelic","gd"],["Sepedi","nso"],["Serbian","sr"],["Sesotho","st"],["Shona","sn"],["Sindhi","sd"],["Sinhala","si"],["Slovak","sk"],["Slovenian","sl"],["Somali","so"],["Spanish","es"],["Sundanese","su"],["Swahili","sw"],["Swedish","sv"],["Tajik","tg"],["Tamil","ta"],["Tatar","tt"],["Telugu","te"],["Thai","th"],["Tigrinya","ti"],["Tsonga","ts"],["Turkish","tr"],["Turkmen","tk"],["Twi","ak"],["Ukrainian","uk"],["Urdu","ur"],["Uyghur","ug"],["Uzbek","uz"],["Vietnamese","vi"],["Welsh","cy"],["Xhosa","xh"],["Yiddish","yi"],["Yoruba","yo"],["Zulu","zu"]];
+const LANG_CODES = Object.fromEntries(LANGS);
+
+/* ---------- Pronunciation defaults ---------- */
+const DEFAULT_PRON = [
+ ["Xin","Shin"],["Xiao","Shiao"],["Xie","Shieh"],["Xiu","Shio"],["Xia","Shia"],
+ ["Xian","Shien"],["Xiang","Shiang"],["Xing","Shing"],["Xiong","Shiong"],
+ ["Xu","Shu"],["Xuan","Shuan"],["Xue","Shue"],["Xun","Shun"],
+ ["Qi","Chi"],["Qia","Chia"],["Qian","Chien"],["Qiang","Chiang"],["Qiao","Chiao"],
+ ["Qie","Chieh"],["Qin","Chin"],["Qing","Ching"],["Qiong","Chiong"],["Qiu","Chio"],
+ ["Qu","Chu"],["Quan","Chuan"],["Que","Chue"],["Qun","Chun"],
+ ["Zha","Jah"],["Zhai","Jai"],["Zhan","Jan"],["Zhang","Jang"],["Zhao","Jao"],
+ ["Zhe","Jeh"],["Zhen","Jen"],["Zheng","Jeng"],["Zhi","Jer"],["Zhong","Jong"],
+ ["Zhou","Joe"],["Zhu","Joo"],["Zhuan","Juan"],["Zhuang","Juang"],["Zhui","Jui"],
+ ["Zhun","Jun"],["Zhuo","Juo"],
+ ["Cai","Tsai"],["Cang","Tsang"],["Cao","Tsao"],["Ce","Tseh"],["Cen","Tsen"],
+ ["Ceng","Tseng"],["Ci","Tsee"],["Cong","Tsong"],["Cou","Tso"],["Cu","Tsu"],
+ ["Cuan","Tsuan"],["Cui","Tsui"],["Cun","Tsun"],["Cuo","Tsu"]
+];
+const DEFAULT_SKIP = "—, –, ―, ─, ═, *, •, ·, ◆, ◇, ■, □, ●, ○, ♪, ♥, ❤, ★, ☆, «, », 「, 」, 『, 』, 【, 】, 〈, 〉, 《, 》, ※, ✦, ✧, ➤, ➜, →, ←, ↑, ↓, |, ~, _, =";
+const SKIP_NAMES = {comma:",",period:".","full stop":".",semicolon:";",colon:":",exclamation:"!","exclamation mark":"!",question:"?","question mark":"?",dash:"-–—",hyphen:"-","em dash":"—","en dash":"–",ellipsis:"…",quotes:"\"'“”‘’«»",apostrophe:"'’",parentheses:"()",brackets:"[]",braces:"{}",slash:"/",backslash:"\\",asterisk:"*",underscore:"_",pipe:"|",tilde:"~",equals:"=",plus:"+",percent:"%",at:"@",hash:"#","$":"$",dollar:"$",ampersand:"&"};
+const SKIP_CHIPS = ["—","*","•","♪","【】","「」","《》","…","comma","period","semicolon"];
+
+const SYLLABLES = new Set(("a o e ai ei ao ou an en ang eng er ba bo bai bei bao ban ben bang beng bi bie biao bian bin bing bu pa po pai pei pao pou pan pen pang peng pi pie piao pian pin ping pu ma mo me mai mei mao mou man men mang meng mi mie miao miu mian min ming mu fa fo fei fou fan fen fang feng fu da de dai dei dao dou dan den dang deng dong di dia die diao diu dian ding du duo dui duan dun ta te tai tao tou tan tang teng tong ti tie tiao tian ting tu tuo tui tuan tun na ne nai nei nao nou nan nen nang neng nong ni nie niao niu nian nin niang ning nu nuo nuan nun nv nve la le lai lei lao lou lan lang leng long li lia lie liao liu lian lin liang ling lu luo luan lun lv lve ga ge gai gei gao gou gan gen gang geng gong gu gua guo guai gui guan gun guang ka ke kai kao kou kan ken kang keng kong ku kua kuo kuai kui kuan kun kuang ha he hai hei hao hou han hen hang heng hong hu hua huo huai hui huan hun huang ji jie jiao jiu jian jin jiang jing jiong ju jue juan jun qi qie qiao qiu qian qin qiang qing qiong qu que quan qun xi xie xiao xiu xian xin xiang xing xiong xu xue xuan xun zhi chi shi ri zi ci si zha cha sha za ca sa zhe che she ze ce se zhai chai shai zai cai sai zhao chao shao rao zao cao sao zhou chou shou rou zou cou sou zhan chan shan ran zan can san zhen chen shen ren zen cen sen zhang chang shang rang zang cang sang zheng cheng sheng reng zeng ceng seng zhong chong rong zong cong song zhu chu shu ru zu cu su zhua chua shua zhuo chuo shuo ruo zuo cuo suo zhui chui shui rui zui cui sui zhuan chuan shuan ruan zuan cuan suan zhun chun shun run zun cun sun zhuang chuang shuang re ri rao rou ran ren rang reng rong ru rui ruo ruan run ya yo ye yao you yan yin yang ying yong yu yue yuan yun yi wa wo wai wei wan wen wang weng wu").split(" "));
+
+function decomposePinyin(word, ruleMap){
+  if(!/^[a-z]+$/.test(word) || word.length < 4) return null;
+  const syl = []; let i = 0;
+  while(i < word.length){
+    let hit = null;
+    for(let len = Math.min(6, word.length - i); len >= 1; len--){
+      const s = word.slice(i, i + len);
+      if(SYLLABLES.has(s)){ hit = s; break; }
+    }
+    if(!hit) return null;
+    syl.push(hit); i += hit.length;
+  }
+  if(syl.length < 2 || !ruleMap.has(syl[0])) return null;
+  return syl.map(s => ruleMap.get(s) || s).join("");
+}
+function matchCase(src, to){
+  if(src === src.toUpperCase() && src !== src.toLowerCase()) return to.toUpperCase();
+  if(src[0] === src[0].toUpperCase()) return to[0].toUpperCase() + to.slice(1);
+  return to.toLowerCase();
+}
+function parseSkipList(str){
+  const words = new Set(), symbols = new Set(), literals = [];
+  for(let tok of String(str).split(/[\n,]+/)){
+    tok = tok.trim(); if(!tok) continue;
+    const named = SKIP_NAMES[tok.toLowerCase()];
+    if(named){ for(const ch of named) symbols.add(ch); continue; }
+    if(/^[\p{L}\p{N}][\p{L}\p{N}'’\- ]*$/u.test(tok)) words.add(tok.toLowerCase());
+    else if(/^[\p{L}\p{N}]/u.test(tok)) literals.push(tok.toLowerCase());
+    else for(const ch of tok) symbols.add(ch);
+  }
+  literals.sort((a,b) => b.length - a.length);
+  return {words, symbols, literals};
+}
+const EMPTY_SKIP = {words:new Set(), symbols:new Set(), literals:[]};
+
+/* Lowercase all-CAPS words so TTS doesn't spell them; preserves length for highlighting.
+   Keeps vowel-less acronyms (NPC, TV) and Roman numerals as-is. */
+function normalizeCaps(text){
+  return text.replace(/\b[A-Z]{2,}(?:['’][A-Z]+)*\b/g, w =>
+    (/[AEIOUY]/.test(w) && !/^[IVXLCDM]+$/.test(w)) ? w.toLowerCase() : w);
+}
+
+/* speechTransform: skip words/symbols + apply pronunciation rules.
+   Returns spoken string + char map back to original offsets. */
+function speechTransform(text, baseOffset = 0){
+  text = normalizeCaps(text);
+  const sk = S.settings.skipEnabled ? parseSkipList(S.settings.skipList) : EMPTY_SKIP;
+  const ruleMap = S.settings.pronEnabled
+    ? new Map(S.settings.pronRules.filter(r => r.on).map(r => [r.from.toLowerCase(), r.to]))
+    : new Map();
+  const out = [], map = [];
+  const push = (str, srcStart, srcLen) => {
+    for(let j = 0; j < str.length; j++){
+      out.push(str[j]);
+      map.push(baseOffset + srcStart + Math.min(Math.max(0, srcLen - 1), Math.floor(j * srcLen / Math.max(1, str.length))));
+    }
+  };
+  const pushGap = (gap, base) => {
+    const gl = gap.toLowerCase(); let i = 0;
+    while(i < gap.length){
+      const lit = sk.literals.find(l => gl.startsWith(l, i));
+      if(lit){ i += lit.length; continue; }
+      if(sk.symbols.has(gap[i])){ i++; continue; }
+      out.push(gap[i]); map.push(baseOffset + base + i); i++;
+    }
+  };
+  const wordRe = /[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;
+  let last = 0, m;
+  while((m = wordRe.exec(text))){
+    pushGap(text.slice(last, m.index), last);
+    const tok = m[0], low = tok.toLowerCase();
+    if(sk.words.has(low)){ last = wordRe.lastIndex; continue; }
+    let res;
+    if(ruleMap.has(low)){
+      res = matchCase(tok, ruleMap.get(low));
+    } else {
+      res = "";
+      for(const part of tok.split(/(['’\-])/)){
+        if(part === "'" || part === "’" || part === "-"){ res += part; continue; }
+        const pl = part.toLowerCase();
+        if(ruleMap.has(pl)) res += matchCase(part, ruleMap.get(pl));
+        else {
+          const syl = decomposePinyin(pl, ruleMap);
+          res += syl ? matchCase(part, syl) : part;
+        }
+      }
+    }
+    push(res, m.index, tok.length);
+    last = wordRe.lastIndex;
+  }
+  pushGap(text.slice(last), last);
+  return {spoken: out.join(""), map};
+}
+
+/* ---------- Settings ---------- */
+const DEFAULTS = {
+  voiceURI:"auto", speechLang:"auto", rate:1, font:"Literata", size:19,
+  highlight:"sentence+word", autoScroll:true, autoTranslate:"off",
+  translateStyle:"simple", translateEngine:"google", genderOn:true, genderFix:{},
+  autoContinue:true, webAutoContinue:true, theme:"dark",
+  readerTheme:"dark", readerBg:"#050505", readerText:"#ffffff",
+  ambientMusic:"off", ambientVolume:0.4, ambientVolumeScale:1,
+  skipEnabled:true, skipList:DEFAULT_SKIP, pronEnabled:true,
+  pronRules:DEFAULT_PRON.map(([from,to]) => ({from, to, on:true}))
+};
+/* Every bundled ambience recording (audio/*.mp3), shared by the settings
+   validator and the ambience player. Generated synth moods live separately. */
+const AMBIENT_TRACKS = {
+  owl1:"audio/owl1.mp3", owl2:"audio/owl2.mp3", wolf1:"audio/wolf1.mp3", wolf2:"audio/wolf2.mp3", bird1:"audio/bird1.mp3",
+  cricket1:"audio/cricket1.mp3", cricket2:"audio/cricket2.mp3", cricket3:"audio/cricket3.mp3", cricket4:"audio/cricket4.mp3", cricket5:"audio/cricket5.mp3", cricket6:"audio/cricket6.mp3", cricket7:"audio/cricket7.mp3",
+  jungle1:"audio/jungle1.mp3", jungle2:"audio/jungle2.mp3", jungle3:"audio/jungle3.mp3", jungle4:"audio/jungle4.mp3",
+  rain1:"audio/rain1.mp3", rain2:"audio/rain2.mp3", rain3:"audio/rain3.mp3", rain4:"audio/rain4.mp3", rain5:"audio/rain5.mp3", rain6:"audio/rain6.mp3",
+  "soft-rain1":"audio/soft-rain1.mp3", "soft-rain2":"audio/soft-rain2.mp3", "soft-rain3":"audio/soft-rain3.mp3", "soft-rain4":"audio/soft-rain4.mp3", "soft-rain5":"audio/soft-rain5.mp3", "soft-rain6":"audio/soft-rain6.mp3", "soft-rain7":"audio/soft-rain7.mp3",
+  blizzard1:"audio/blizzard1.mp3", blizzard2:"audio/blizzard2.mp3", blizzard3:"audio/blizzard3.mp3", blizzard4:"audio/blizzard4.mp3", blizzard5:"audio/blizzard5.mp3", blizzard6:"audio/blizzard6.mp3", blizzard7:"audio/blizzard7.mp3", blizzard8:"audio/blizzard8.mp3",
+  soft1:"audio/soft1.mp3", soft2:"audio/soft2.mp3", soft3:"audio/soft3.mp3", soft4:"audio/soft4.mp3", soft5:"audio/soft5.mp3", soft6:"audio/soft6.mp3", soft7:"audio/soft7.mp3", soft8:"audio/soft8.mp3", soft9:"audio/soft9.mp3", soft10:"audio/soft10.mp3",
+  "soft-ambient1":"audio/soft-ambient1.mp3", "soft-ambient2":"audio/soft-ambient2.mp3", "soft-ambient3":"audio/soft-ambient3.mp3", "soft-ambient4":"audio/soft-ambient4.mp3", "soft-ambient5":"audio/soft-ambient5.mp3", "soft-ambient6":"audio/soft-ambient6.mp3", "soft-ambient7":"audio/soft-ambient7.mp3",
+  action1:"audio/action1.mp3", action2:"audio/action2.mp3", action3:"audio/action3.mp3", action4:"audio/action4.mp3", action5:"audio/action5.mp3", action6:"audio/action6.mp3", action7:"audio/action7.mp3",
+  fantasy1:"audio/fantasy1.mp3", fantasy2:"audio/fantasy2.mp3", fantasy3:"audio/fantasy3.mp3", fantasy4:"audio/fantasy4.mp3", fantasy5:"audio/fantasy5.mp3", fantasy6:"audio/fantasy6.mp3", fantasy7:"audio/fantasy7.mp3", fantasy8:"audio/fantasy8.mp3",
+  mystery1:"audio/mystery1.mp3", mystery2:"audio/mystery2.mp3",
+  "sci-fi1":"audio/sci-fi1.mp3", "sci-fi2":"audio/sci-fi2.mp3", "sci-fi3":"audio/sci-fi3.mp3", "sci-fi4":"audio/sci-fi4.mp3", "sci-fi5":"audio/sci-fi5.mp3", "sci-fi6":"audio/sci-fi6.mp3", "sci-fi7":"audio/sci-fi7.mp3", "sci-fi8":"audio/sci-fi8.mp3",
+  thriller1:"audio/thriller1.mp3", thriller2:"audio/thriller2.mp3", thriller3:"audio/thriller3.mp3", thriller4:"audio/thriller4.mp3", thriller5:"audio/thriller5.mp3", thriller6:"audio/thriller6.mp3", thriller7:"audio/thriller7.mp3", thriller8:"audio/thriller8.mp3"
+};
+function loadSettings(){
+  let saved = {};
+  try{ saved = JSON.parse(localStorage.getItem("upr.settings") || "{}"); }catch(e){}
+  const s = Object.assign({}, DEFAULTS, saved);
+  if(!Array.isArray(s.pronRules)) s.pronRules = DEFAULTS.pronRules.map(r => ({...r}));
+  if(s.ambientMusic === "file" || (s.ambientMusic !== "off" && !AMBIENT_TRACKS[s.ambientMusic] && !["nature","blizzard","crickets","calm","thriller","action","mystery","fantasy","fireplace"].includes(s.ambientMusic))) s.ambientMusic = DEFAULTS.ambientMusic;
+  if(saved.ambientVolumeScale === 1){
+    const volume = Number(s.ambientVolume);
+    s.ambientVolume = Number.isFinite(volume) ? clamp(volume, 0, 1) : DEFAULTS.ambientVolume;
+  }else if(Object.prototype.hasOwnProperty.call(saved, "ambientVolume")){
+    const volume = Number(saved.ambientVolume);
+    s.ambientVolume = Number.isFinite(volume) ? clamp(volume, 0, 0.2) / 0.2 : DEFAULTS.ambientVolume;
+    s.ambientVolumeScale = 1;
+    try{ localStorage.setItem("upr.settings", JSON.stringify(s)); }catch(error){ console.warn("Could not save the updated music volume setting.", error); }
+  }else{
+    s.ambientVolume = DEFAULTS.ambientVolume;
+    s.ambientVolumeScale = 1;
+  }
+  return s;
+}
+function saveSettings(){ try{ localStorage.setItem("upr.settings", JSON.stringify(S.settings)); }catch(e){} }
+
+/* ---------- State ---------- */
+const S = {
+  settings: loadSettings(),
+  mode:"reader",
+  book:null, chapterIdx:0, pages:[], pageIdx:0,
+  playing:false, paused:false, needRespeak:false,
+  wordIdx:[], allFonts:[]
+};
+const pos = {u:0};
+let gen = 0, renderGen = 0, playbackStopToken = 0, voices = [], utStart = 0, boundaryTimer = null, editingRule = null, voiceFallbackURI = "";
+let hlFallbackTimer = null, lastBoundaryAt = 0, activeUtterance = null;
+let wdTimer = null, stallRetries = 0, wakeLock = null;
+let library = [], bookmarks = [];
+try{ library = JSON.parse(localStorage.getItem("upr.library") || "[]"); }catch(e){}
+try{ bookmarks = JSON.parse(localStorage.getItem("upr.bookmarks") || "[]"); }catch(e){}
+function saveLibrary(){
+  /* Full text goes to IndexedDB; localStorage keeps only titles + placeholders. */
+  try{
+    library.forEach(b => { if(b.chapters) idbPut("t:" + b.id, JSON.stringify({ch: b.chapters})); });
+    const lite = library.map(b => ({...b, chapters: (b.chapters || []).map(c => ({title: c.title, text: "__IDB__"}))}));
+    localStorage.setItem("upr.library", JSON.stringify(lite));
+  }catch(e){ toast("Storage is full - this book is kept for this session only."); }
+}
+function saveBookmarks(){ try{ localStorage.setItem("upr.bookmarks", JSON.stringify(bookmarks)); }catch(e){} }
+/* ---------- Big-library cache: book text lives in IndexedDB (hundreds of MB free) so
+   novels survive closing the site — localStorage alone fills up at ~5 MB. ---------- */
+let _idbP = null;
+function idb(){
+  if(_idbP) return _idbP;
+  _idbP = new Promise((res, rej) => {
+    try{
+      const rq = indexedDB.open("upr-books", 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore("texts");
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    }catch(e){ rej(e); }
+  }).catch(() => null);
+  return _idbP;
+}
+async function idbPut(key, val){
+  const db = await idb(); if(!db) return;
+  return new Promise(res => { const tx = db.transaction("texts", "readwrite"); tx.objectStore("texts").put(val, key); tx.oncomplete = res; tx.onerror = res; });
+}
+async function idbGet(key){
+  const db = await idb(); if(!db) return null;
+  return new Promise(res => { const tx = db.transaction("texts", "readonly"); const rq = tx.objectStore("texts").get(key); rq.onsuccess = () => res(rq.result ?? null); rq.onerror = () => res(null); });
+}
+async function idbDel(key){
+  const db = await idb(); if(!db) return;
+  try{ const tx = db.transaction("texts", "readwrite"); tx.objectStore("texts").delete(key); }catch(e){}
+}
+async function hydrateLibrary(){
+  for(const b of library){
+    if(b.chapters && b.chapters.some(c => c.text === "__IDB__")){
+      const raw = await idbGet("t:" + b.id);
+      if(raw){ try{ const d = JSON.parse(raw); if(d && Array.isArray(d.ch) && d.ch.length) b.chapters = d.ch; }catch(e){} }
+    }
+  }
+}
+function saveProgress(){
+  if(!S.book) return;
+  try{
+    const p = JSON.parse(localStorage.getItem("upr.progress") || "{}");
+    p[S.book.id] = {
+      ch:S.chapterIdx, page:S.pageIdx, pages:S.pages.length,
+      pct:Math.round(bookProgress() * 100)
+    };
+    localStorage.setItem("upr.progress", JSON.stringify(p));
+    localStorage.setItem("upr.lastBook", S.book.id);
+  }catch(e){}
+}
+
+/* ---------- Toasts / status ---------- */
+function toast(msg, opts = {}){
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.innerHTML = `<span>${esc(msg)}</span>`;
+  const dismiss = () => { el.classList.add("out"); setTimeout(() => el.remove(), 320); };
+  if(opts.action){
+    const b = document.createElement("button");
+    b.textContent = opts.action;
+    b.onclick = () => { opts.onAction && opts.onAction(); dismiss(); };
+    el.appendChild(b);
+  }
+  $("toasts").appendChild(el);
+  setTimeout(dismiss, opts.duration || 4500);
+}
+function setStatus(t){
+  $("statusVal").textContent = t;
+  $("eq").classList.toggle("on", t === "Reading" || t === "Testing pronunciation…");
+}
+
+/* ---------- Progress feedback (imports, downloads, translation) ---------- */
+let progToken = 0, progTimer = null, progValue = 0, progCap = 92, progHideTimer = null;
+function progressPaint(){
+  const pct = clamp(progValue, 0, 100);
+  $("progPct").textContent = Math.round(pct) + "%";
+  $("progFill").style.width = pct + "%";
+}
+function progressShow(label, pct = 4, cap = 92){
+  progToken++;
+  progValue = clamp(pct, 0, 100);
+  progCap = cap;
+  clearInterval(progTimer); clearTimeout(progHideTimer);
+  $("progLabel").textContent = label || "Working…";
+  $("progPop").classList.add("on");
+  progressPaint();
+  // Creep towards the cap so long downloads still look alive.
+  progTimer = setInterval(() => {
+    if(progValue >= progCap) return;
+    progValue = Math.min(progCap, progValue + Math.max(0.35, (progCap - progValue) * 0.05));
+    progressPaint();
+  }, 450);
+  return progToken;
+}
+function progressSet(pct, label){
+  if(pct != null) progValue = Math.max(progValue, clamp(pct, 0, 100));
+  if(label) $("progLabel").textContent = label;
+  progressPaint();
+}
+function progressEnd(label, token){
+  if(token != null && token !== progToken) return;
+  clearInterval(progTimer); progTimer = null;
+  clearTimeout(progHideTimer);
+  progValue = 100;
+  if(label) $("progLabel").textContent = label;
+  progressPaint();
+  progHideTimer = setTimeout(() => {
+    if(token != null && token !== progToken) return;
+    $("progPop").classList.remove("on");
+    setTimeout(() => {
+      if(!$("progPop").classList.contains("on")){
+        progValue = 0; $("progFill").style.width = "0%"; $("progPct").textContent = "";
+      }
+    }, 260);
+  }, 700);
+}
+function progressAbort(token){
+  if(token != null && token !== progToken) return;
+  clearInterval(progTimer); progTimer = null;
+  clearTimeout(progHideTimer);
+  $("progPop").classList.remove("on");
+}
+
+/* ---------- Text helpers ---------- */
+function countWords(t){
+  const lat = (t.match(/[\p{L}\p{N}]+/gu) || []).length;
+  const cjk = (t.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/g) || []).length;
+  return lat + cjk;
+}
+function splitSentences(text){
+  const res = []; let start = 0;
+  const enders = ".!?。！？…", closers = ".!?。！？…\"'”’»」』】)";
+  for(let i = 0; i < text.length; i++){
+    if(enders.includes(text[i])){
+      let j = i + 1;
+      while(j < text.length && closers.includes(text[j])) j++;
+      while(j < text.length && /\s/.test(text[j])) j++;
+      const seg = text.slice(start, j);
+      if(seg.trim()) res.push({text:seg, start, end:j});
+      start = j; i = j - 1;
+    }
+  }
+  if(start < text.length){
+    const seg = text.slice(start);
+    if(seg.trim()) res.push({text:seg, start, end:text.length});
+  }
+  return res;
+}
+function chunkSentence(s){
+  if(s.text.length <= 230) return [s];
+  const chunks = [], text = s.text; let i = 0;
+  while(text.length - i > 230){
+    let cut = -1;
+    for(let k = i + 210; k > i + 80; k--){ if(",;:，；、".includes(text[k])){ cut = k + 1; break; } }
+    if(cut < 0){ cut = text.lastIndexOf(" ", i + 220); cut = cut > i ? cut + 1 : i + 220; }
+    chunks.push({text:text.slice(i, cut), start:s.start + i, end:s.start + cut});
+    i = cut;
+  }
+  if(i < text.length) chunks.push({text:text.slice(i), start:s.start + i, end:s.end});
+  return chunks;
+}
+let segmenter = null;
+try{ if("Segmenter" in Intl) segmenter = new Intl.Segmenter(undefined, {granularity:"word"}); }catch(e){}
+function wordSpans(text){
+  const res = [];
+  if(segmenter){
+    for(const s of segmenter.segment(text)) if(s.isWordLike) res.push({s:s.index, e:s.index + s.segment.length});
+  } else {
+    const re = /[\p{L}\p{N}][\p{L}\p{N}'’\-]*/gu; let m;
+    while((m = re.exec(text))) res.push({s:m.index, e:m.index + m[0].length});
+  }
+  return res;
+}
+function renderWordsHtml(text, base){
+  const ws = wordSpans(text); let html = "", last = 0;
+  for(const w of ws){
+    html += esc(text.slice(last, w.s));
+    html += `<span class="w" data-s="${base + w.s}" data-e="${base + w.e}">${esc(text.slice(w.s, w.e))}</span>`;
+    last = w.e;
+  }
+  return html + esc(text.slice(last));
+}
+/* A paragraph is "done" for a given language + style + engine combination. */
+function trKey(){
+  const code = LANG_CODES[S.settings.autoTranslate];
+  if(!code) return "";
+  return code + "|" + (S.settings.translateStyle || "simple") + "|" + (S.settings.translateEngine || "google");
+}
+function effText(p){
+  return (S.settings.autoTranslate !== "off" && p.trKey === trKey() && p.display) ? p.display : p.text;
+}
+
+/* ---------- Pagination & rendering ---------- */
+function buildPages(){
+  const ch = S.book && S.book.chapters[S.chapterIdx];
+  const paras = ch ? ch.text.split(/\n+/).map(t => t.trim()).filter(Boolean) : [];
+  const pages = [];
+  let cur = null, sid = 0;
+  const newPage = () => { cur = {paras:[], units:[], words:0, cum:[]}; sid = 0; };
+  const pushPara = text => {
+    const sents = splitSentences(text).map(s => ({...s, sid:sid++}));
+    const p = {text, sents, idx:cur.paras.length};
+    cur.paras.push(p);
+    for(const s of sents) for(const c of chunkSentence(s)){
+      const u = {p:p.idx, sid:s.sid, text:c.text, start:c.start, end:c.end, w:countWords(c.text)};
+      cur.units.push(u); cur.words += u.w; cur.cum.push(cur.words);
+    }
+  };
+  newPage();
+  for(const t of paras){
+    const w = countWords(t);
+    if(cur.words + w > PAGE_WORDS && cur.paras.length){ pages.push(cur); newPage(); }
+    if(w > PAGE_WORDS * 2){
+      let buf = "";
+      for(const s of splitSentences(t)){
+        if(countWords(buf) + countWords(s.text) > PAGE_WORDS && buf){
+          pushPara(buf.trim()); pages.push(cur); newPage(); buf = "";
+        }
+        buf += s.text + " ";
+      }
+      if(buf.trim()) pushPara(buf.trim());
+    } else pushPara(t);
+  }
+  if(cur.paras.length || !pages.length) pages.push(cur);
+  S.pages = pages;
+  try{ gDetect(); }catch(e){}
+}
+function rebuildPageUnits(page){
+  let sid = 0; page.units = []; page.words = 0; page.cum = [];
+  for(const p of page.paras){
+    p.sents = splitSentences(effText(p)).map(s => ({...s, sid:sid++}));
+    for(const s of p.sents) for(const c of chunkSentence(s)){
+      const u = {p:p.idx, sid:s.sid, text:c.text, start:c.start, end:c.end, w:countWords(c.text)};
+      page.units.push(u); page.words += u.w; page.cum.push(page.words);
+    }
+  }
+}
+function renderPage(){
+  renderGen++;
+  curHlW = null; curHlS = null; curHlP = null;
+  const page = S.pages[S.pageIdx] || {paras:[], units:[], words:0, cum:[]};
+  const ch = S.book && S.book.chapters[S.chapterIdx];
+  $("chapterHeading").textContent = ch ? ch.title : "";
+  let html = "";
+  page.paras.forEach((p, pi) => {
+    html += `<p data-p="${pi}">`;
+    const sents = (p.sents && p.sents.length) ? p.sents : splitSentences(effText(p)).map((s, i) => ({...s, sid: i}));
+    for(const s of sents) html += `<span class="sent" data-sid="${s.sid}">${renderWordsHtml(s.text, s.start)}</span>`;
+    html += "</p>";
+  });
+  $("content").innerHTML = html || '<p class="empty">Nothing to read yet — open a book or a web page.</p>';
+  S.wordIdx = page.paras.map((p, pi) =>
+    [...$("content").querySelectorAll(`p[data-p="${pi}"] .w`)].map(el => ({el, s:+el.dataset.s, e:+el.dataset.e})));
+  pos.u = clamp(pos.u, 0, Math.max(0, page.units.length - 1));
+  renderPagesList(); renderChaptersList(); updateChapterBar(); updateStats();
+  if(S.settings.autoTranslate !== "off") translatePage();
+}
+function chapterProgress(){
+  if(!S.book || !S.pages.length) return 0;
+  const chars = p => (p.paras || []).reduce((a, pr) => a + (pr.text || "").length, 0);
+  let total = 0;
+  for(const p of S.pages) total += chars(p);
+  if(!total) return 0;
+  let done = 0;
+  for(let i = 0; i < S.pageIdx && i < S.pages.length; i++) done += chars(S.pages[i]);
+  const page = S.pages[S.pageIdx];
+  const u = page && page.units[pos.u];
+  if(page && u){
+    for(const pr of page.paras) if(pr.idx < u.p) done += (pr.text || "").length;
+    done += u.start || 0;
+  }
+  return clamp(done / total, 0, 1);
+}
+function bookProgress(){
+  if(!S.book || !S.book.chapters || !S.book.chapters.length) return 0;
+  let total = 0;
+  for(const c of S.book.chapters) total += (c.text || "").length;
+  if(!total) return 0;
+  let done = 0;
+  for(let i = 0; i < S.chapterIdx && i < S.book.chapters.length; i++) done += (S.book.chapters[i].text || "").length;
+  done += (S.book.chapters[S.chapterIdx].text || "").length * chapterProgress();
+  return clamp(done / total, 0, 1);
+}
+/* Percent read for a library entry, from the last saved position. */
+function savedBookPct(book){
+  if(!book || !book.chapters || !book.chapters.length) return 0;
+  if(S.book && S.book.id === book.id) return Math.round(bookProgress() * 100);
+  let pg = {};
+  try{ pg = JSON.parse(localStorage.getItem("upr.progress") || "{}")[book.id] || {}; }catch(e){}
+  if(pg.pct != null) return clamp(Math.round(pg.pct), 0, 100);
+  const total = book.chapters.reduce((a, c) => a + (c.text || "").length, 0) || 1;
+  const chIdx = clamp(pg.ch || 0, 0, book.chapters.length - 1);
+  let done = 0;
+  for(let i = 0; i < chIdx; i++) done += (book.chapters[i].text || "").length;
+  const pages = Math.max(1, pg.pages || 1);
+  done += (book.chapters[chIdx].text || "").length * clamp((pg.page || 0) / pages, 0, 1);
+  return clamp(Math.round(done / total * 100), 0, 100);
+}
+/* Percent read for one chapter of a library entry. */
+function savedChapterPct(book, i){
+  if(S.book && S.book.id === book.id) return chapterPct(i);
+  if(!book || !book.chapters || i < 0) return 0;
+  let pg = {};
+  try{ pg = JSON.parse(localStorage.getItem("upr.progress") || "{}")[book.id] || {}; }catch(e){}
+  const ch = clamp(pg.ch || 0, 0, book.chapters.length - 1);
+  if(i < ch) return 100;
+  if(i > ch) return 0;
+  const pages = Math.max(1, pg.pages || 1);
+  return clamp(Math.round(((pg.page || 0) / pages) * 100), 0, 100);
+}
+function updateStats(){
+  const total = S.pages.reduce((a, p) => a + p.words, 0);
+  const page = S.pages[S.pageIdx];
+  const done = S.pages.slice(0, S.pageIdx).reduce((a, p) => a + p.words, 0) + (page && page.cum[pos.u - 1] || 0);
+  const mins = Math.max(0, Math.round((total - done) / (165 * S.settings.rate)));
+  $("timeLeft").textContent = `About ${mins} min left`;
+  $("pageInfo").textContent = `Page ${S.pageIdx + 1} / ${S.pages.length || 1}`;
+  const cp = chapterProgress(), bp = bookProgress();
+  const readerVisible = !$("readerPane").hidden;
+  $("progressRow").hidden = !S.book || !readerVisible;
+  $("chPct").textContent = Math.round(cp * 100) + "%";
+  $("chFill").style.width = (cp * 100).toFixed(1) + "%";
+  $("bookPct").textContent = Math.round(bp * 100) + "%";
+  $("bookFill").style.width = (bp * 100).toFixed(1) + "%";
+  const hp = $("hudProgress");
+  if(hp){
+    hp.hidden = !S.book || readerVisible;
+    $("hudBookPct").textContent = Math.round(bp * 100) + "%";
+    $("hudBookFill").style.width = (bp * 100).toFixed(1) + "%";
+    $("hudChPct").textContent = Math.round(cp * 100) + "%";
+    $("hudChFill").style.width = (cp * 100).toFixed(1) + "%";
+  }
+  syncHud();
+}
+function renderPagesList(){
+  $("pagesList").innerHTML = S.pages.map((p, i) => {
+    const first = p.paras[0] ? effText(p.paras[0]).slice(0, 52) : "—";
+    return `<button class="list-item ${i === S.pageIdx ? "active" : ""}" data-page="${i}">
+      <div class="li-main"><b>Page ${i + 1}</b><span>${esc(first)}…</span></div>
+      <span class="badge">${p.words} w</span></button>`;
+  }).join("") || '<p class="hint">No pages yet.</p>';
+}
+function chapterPct(i){
+  if(i < S.chapterIdx) return 100;
+  if(i > S.chapterIdx) return 0;
+  return Math.round(chapterProgress() * 100);
+}
+function chapterItemHtml(c, i){
+  const pct = chapterPct(i);
+  return `<button class="list-item ${i === S.chapterIdx ? "active" : ""}" data-ch="${i}">
+    <div class="li-main">
+      <b>${esc(c.title || ("Chapter " + (i + 1)))}</b>
+      <span>${countWords(c.text || "")} words · ${pct}% read</span>
+      <div class="mini-track"><div class="mini-fill" style="width:${pct}%"></div></div>
+    </div>
+    ${i === S.chapterIdx ? '<span class="badge">NOW</span>' : (pct >= 100 ? '<span class="badge">DONE</span>' : "")}
+    <span class="li-edit" role="button" tabindex="0" data-rename-chapter="${esc(S.book.id)}" data-ch-idx="${i}" title="Rename chapter" aria-label="Rename chapter">✎</span></button>`;
+}
+function renderChaptersList(){
+  const el = $("chaptersList");
+  if(!S.book){ el.innerHTML = '<p class="hint">Open a book or read a web page first.</p>'; return; }
+  const chs = S.book.chapters || [];
+  if(S.book.source === "web"){
+    el.innerHTML = chs.map((c, i) => chapterItemHtml(c, i)).join("")
+      + (S.book.webPrevUrl ? `<button class="list-item" data-webnav="prev"><div class="li-main"><b>‹ Previous chapter</b><span>Load from website</span></div></button>` : "")
+      + (S.book.webNextUrl ? `<button class="list-item" data-webnav="next"><div class="li-main"><b>Next chapter ›</b><span>Load from website</span></div></button>` : "");
+  } else {
+    el.innerHTML = chs.map((c, i) => chapterItemHtml(c, i)).join("");
+  }
+}
+function updateChapterBar(){
+  const row = $("chapterRow");
+  $("docSub").style.cursor = S.book ? "pointer" : "";
+  $("docSub").title = S.book ? "Rename this novel" : "";
+  if(!S.book){ row.hidden = true; return; }
+  row.hidden = false;
+  if(S.book.source === "web"){
+    const ch = S.book.chapters[S.chapterIdx];
+    $("chTitle").textContent = (ch && ch.title) || S.book.title || "Chapter";
+    $("btnPrevCh").disabled = !(S.book.webPrevUrl || S.chapterIdx > 0);
+    $("btnNextCh").disabled = !(S.book.webNextUrl || S.chapterIdx < S.book.chapters.length - 1);
+  } else {
+    const ch = S.book.chapters[S.chapterIdx];
+    $("chTitle").textContent = ch ? ch.title : "Chapter";
+    $("btnPrevCh").disabled = S.chapterIdx <= 0;
+    $("btnNextCh").disabled = S.chapterIdx >= S.book.chapters.length - 1;
+  }
+}
+
+/* ---------- Highlighting ---------- */
+let curHlW = null, curHlS = null, curHlP = null, curMarkP = null;
+function clearHighlights(){
+  if(curHlW){ curHlW.classList.remove("hl-w"); curHlW = null; }
+  if(curHlS){ curHlS.classList.remove("hl-s"); curHlS = null; }
+  if(curHlP){ curHlP.classList.remove("hl-p"); curHlP = null; }
+  if(curMarkP){ curMarkP.classList.remove("cur-p"); curMarkP = null; }
+  $("content").querySelectorAll(".hl-w,.hl-s,.hl-p,.cur-p").forEach(el => el.classList.remove("hl-w","hl-s","hl-p","cur-p"));
+}
+function findWord(p, off, u = null){
+  const allWs = S.wordIdx[p] || [];
+  if(!allWs.length) return null;
+  // If unit u is provided, constrain candidate words to this unit's span
+  const ws = (u && u.start != null && u.end != null)
+    ? allWs.filter(w => w.e > u.start && w.s < u.end)
+    : allWs;
+  const list = ws.length ? ws : allWs;
+
+  // 1. Direct hit: offset falls inside [w.s, w.e)
+  for(let i = 0; i < list.length; i++){
+    const w = list[i];
+    if(off >= w.s && off < w.e) return w;
+  }
+  // 2. Trailing punctuation or spaces: stay on the word just spoken
+  // rather than prematurely jumping to the next word
+  for(let i = 0; i < list.length; i++){
+    const w = list[i];
+    const nextS = (i + 1 < list.length) ? list[i + 1].s : Infinity;
+    if(off >= w.e && off < nextS) return w;
+  }
+  // 3. Clamping boundary
+  if(off <= list[0].s) return list[0];
+  return list[list.length - 1];
+}
+function highlightUnit(u, orig, scroll = true){
+  const mode = S.settings.highlight;
+  const pEl = $("content").querySelector(`p[data-p="${u.p}"]`);
+  let sEl = pEl && pEl.querySelector(`.sent[data-sid="${u.sid}"]`);
+  const w = orig != null ? findWord(u.p, orig, u) : null;
+  const targetWEl = w ? w.el : null;
+  if(!sEl && targetWEl) sEl = targetWEl.closest(".sent");
+  if(!sEl && pEl) sEl = pEl.querySelector(".sent");
+
+  // Paragraph highlight
+  const wantP = (mode === "paragraph" || mode === "paragraph+word") ? pEl : null;
+  if(curHlP !== wantP){
+    if(curHlP) curHlP.classList.remove("hl-p");
+    if(wantP) wantP.classList.add("hl-p");
+    curHlP = wantP;
+  }
+  /* Mode-independent marker on the narrated paragraph (focus dimming) */
+  if(curMarkP !== pEl){
+    if(curMarkP) curMarkP.classList.remove("cur-p");
+    if(pEl) pEl.classList.add("cur-p");
+    curMarkP = pEl;
+  }
+
+  // Sentence highlight
+  let wantS = null;
+  if(mode === "sentence" || mode === "sentence+word") wantS = sEl;
+  else if(mode === "word" && !targetWEl && !curHlW) wantS = sEl;
+  if(curHlS !== wantS){
+    if(curHlS) curHlS.classList.remove("hl-s");
+    if(wantS) wantS.classList.add("hl-s");
+    curHlS = wantS;
+  }
+
+  // Word highlight
+  const wantW = (mode === "word" || mode.endsWith("+word")) ? targetWEl : null;
+  if(wantW && curHlW !== wantW){
+    if(curHlW) curHlW.classList.remove("hl-w");
+    wantW.classList.add("hl-w");
+    curHlW = wantW;
+    if(mode === "word" && curHlS){
+      curHlS.classList.remove("hl-s");
+      curHlS = null;
+    }
+  }
+
+  if(scroll && S.settings.autoScroll && (targetWEl || sEl)){
+    const targetEl = targetWEl || sEl;
+    const r = targetEl.getBoundingClientRect();
+    if(r.top < 90 || r.bottom > innerHeight - 130) targetEl.scrollIntoView({block:"center", behavior:"smooth"});
+  }
+}
+
+/* ---------- Speech engine ---------- */
+function detectLang(){
+  const page = S.pages[S.pageIdx];
+  const t = page && page.units[pos.u] ? page.units[pos.u].text : (S.book ? S.book.chapters[S.chapterIdx].text.slice(0, 600) : "");
+  if(/[\u3040-\u30ff]/.test(t)) return "ja";
+  if(/[\uac00-\ud7af]/.test(t)) return "ko";
+  if(/[\u4e00-\u9fff]/.test(t)) return "zh";
+  if(/[\u0600-\u06ff]/.test(t)) return "ar";
+  if(/[\u0400-\u04ff]/.test(t)) return "ru";
+  if(/[\u0590-\u05ff]/.test(t)) return "he";
+  if(/[\u0e00-\u0e7f]/.test(t)) return "th";
+  if(/[\u0900-\u097f]/.test(t)) return "hi";
+  return "en";
+}
+function pickVoice(){
+  if(!voices.length) return null;
+  if(voiceFallbackURI){
+    const fallback = voices.find(v => v.voiceURI === voiceFallbackURI);
+    if(fallback) return fallback;
+    voiceFallbackURI = "";
+  }
+  if(S.settings.voiceURI !== "auto"){
+    const v = voices.find(v => v.voiceURI === S.settings.voiceURI);
+    if(v) return v;
+  }
+  let target;
+  if(S.settings.speechLang !== "auto") target = S.settings.speechLang;
+  else if(S.settings.autoTranslate !== "off") target = LANG_CODES[S.settings.autoTranslate];
+  else target = detectLang();
+  const base = String(target).split("-")[0].toLowerCase();
+  return voices.find(v => v.lang.toLowerCase().replace("_","-").startsWith(base))
+    || voices.find(v => v.default)
+    || voices.find(v => v.lang.toLowerCase().startsWith("en"))
+    || voices[0];
+}
+function applyVoice(ut){
+  const v = pickVoice();
+  if(v){ ut.voice = v; ut.lang = v.lang; } else ut.lang = "en-US";
+}
+function findFallbackVoice(failed){
+  if(!failed) return null;
+  const choices = voices.filter(v => v.voiceURI !== failed.voiceURI);
+  const language = String(failed.lang || "").toLowerCase().split(/[-_]/)[0];
+  return choices.find(v => v.localService && v.default && String(v.lang).toLowerCase().startsWith(language))
+    || choices.find(v => v.localService && String(v.lang).toLowerCase().startsWith(language))
+    || choices.find(v => v.localService && v.default)
+    || choices.find(v => v.default)
+    || choices[0]
+    || null;
+}
+function retryWithFallbackVoice(ut, error){
+  const failed = ut && ut.voice;
+  if(!failed || failed.voiceURI === voiceFallbackURI) return false;
+  const fallback = findFallbackVoice(failed);
+  if(!fallback) return false;
+  voiceFallbackURI = fallback.voiceURI;
+  const reason = typeof error === "string" && error ? " (" + error + ")" : "";
+  toast(failed.name + " could not speak" + reason + "; using " + fallback.name + " for this session.");
+  restartSpeech();
+  return true;
+}
+function currentUnit(){
+  const page = S.pages[S.pageIdx];
+  return page && page.units[pos.u] || null;
+}
+function stopHlFallback(){
+  if(hlFallbackTimer){ clearTimeout(hlFallbackTimer); hlFallbackTimer = null; }
+}
+function speechUnitForOffset(units, offset){
+  let last = units[0];
+  for(const unit of units){
+    if(offset >= unit.start && offset < unit.end) return unit;
+    if(offset < unit.start) return unit;
+    last = unit;
+  }
+  return last;
+}
+/* Android Chrome normally sends no word-boundary events. Estimate the word
+   being spoken from elapsed time so the highlight keeps moving there too. */
+function startHlFallback(batch, g){
+  stopHlFallback();
+  if(!isMobileSpeech && !isPiperVoice()) return;
+  if(!["word","sentence+word","paragraph+word"].includes(S.settings.highlight)) return;
+  const ws = wordSpans(batch.spoken || "");
+  if(ws.length < 2) return;
+  const rate = Math.max(0.5, S.settings.rate) || 1;
+  const t0 = performance.now();
+  let acc = 0;
+  const starts = ws.map(w => {
+    const s = acc;
+    acc += Math.max(130, (w.e - w.s) * 62 / rate);
+    return s;
+  });
+  let lastIdx = -1;
+  const tick = () => {
+    if(g !== gen || !S.playing || S.paused) return;
+    if(performance.now() - lastBoundaryAt > 900){
+      const elapsed = performance.now() - t0;
+      let i = 0;
+      while(i + 1 < ws.length && starts[i + 1] <= elapsed) i++;
+      if(i !== lastIdx){
+        lastIdx = i;
+        const orig = batch.map[ws[i].s];
+        highlightUnit(speechUnitForOffset(batch.units, orig), orig, false);
+      }
+    }
+    hlFallbackTimer = setTimeout(tick, 120);
+  };
+  hlFallbackTimer = setTimeout(tick, 250);
+}
+/* ---------- Piper AI voices: offline neural TTS running on bundled WASM ---------- */
+function isPiperVoice(){
+  return String(S.settings.voiceURI || "").startsWith("piper:") && !!window.PiperBridge;
+}
+function piperVoiceId(){ return String(S.settings.voiceURI || "").slice(6); }
+let piperAudio = null, piperPre = null;
+function piperStop(){
+  if(piperAudio){ const a = piperAudio; piperAudio = null; try{ a.pause(); }catch(e){} try{ a.removeAttribute("src"); }catch(e){} }
+}
+/* Generate the next batch quietly in the background so reading flows without gaps. */
+function piperPrefetch(batch){
+  try{
+    if(!isPiperVoice()) return;
+    const nextIdx = batch ? batch.endIndex + 1 : pos.u;
+    const page = S.pages[S.pageIdx];
+    if(!page || nextIdx >= page.units.length) return;
+    const nb = buildSpeechBatch(nextIdx);
+    if(!nb || !nb.spoken || !nb.spoken.trim() || (piperPre && piperPre.text === nb.spoken)) return;
+    piperPre = {text: nb.spoken, wav: window.PiperBridge.speak(nb.spoken, piperVoiceId())};
+  }catch(e){}
+}
+async function piperSpeak(batch, g){
+  const u = batch.units && batch.units[0];
+  if(u) highlightUnit(u, u.start || 0);
+  updateStats();
+  setStatus("Piper: generating…");
+  let wav = null;
+  if(piperPre && piperPre.text === batch.spoken){ wav = piperPre.wav; piperPre = null; }
+  else wav = window.PiperBridge.speak(batch.spoken, piperVoiceId());
+  let blob;
+  try{ blob = await wav; }
+  catch(e){
+    piperPre = null;
+    if(g !== gen) return;
+    toast("Piper voice failed — using the system voice. (" + ((e && e.message) || e) + ")");
+    S.settings.voiceURI = "auto"; saveSettings(); loadVoices(); renderPiperVoices();
+    restartSpeech();
+    return;
+  }
+  if(g !== gen){ piperPrefetch(batch); return; }
+  const url = URL.createObjectURL(blob);
+  const au = new Audio(url);
+  au.playbackRate = clamp(S.settings.rate, 0.5, 4);
+  try{ au.preservesPitch = true; }catch(e){}
+  piperAudio = au;
+  utStart = performance.now(); lastBoundaryAt = performance.now();
+  if(u) highlightUnit(u, u.start || 0);
+  startHlFallback(batch, g);
+  au.onended = () => {
+    URL.revokeObjectURL(url);
+    if(piperAudio === au) piperAudio = null;
+    stopHlFallback();
+    if(g !== gen) return;
+    stallRetries = 0;
+    pos.u = batch.endIndex; nextUnit();
+  };
+  au.onerror = au.onended;
+  updateStats(); setStatus("Reading");
+  /* If the user paused while this batch was still generating, hold the audio
+     ready instead of starting it — resumePlayback will press play. */
+  if(g === gen && !S.paused){
+    try{ au.play().catch(() => { if(g === gen && S.playing && !S.paused){ pos.u = batch.endIndex; nextUnit(); } }); }
+    catch(e){ if(g === gen){ pos.u = batch.endIndex; nextUnit(); } }
+  }
+  else setStatus("Paused");
+  piperPrefetch(batch);
+}
+function restartSpeech(){
+  gen++; const g = gen;
+  stopHlFallback();
+  piperStop(); piperPre = null;
+  clearTimeout(boundaryTimer);
+  const active = speechSynthesis.speaking || speechSynthesis.pending;
+  try{ if(active) speechSynthesis.cancel(); }catch(e){}
+  const start = () => { if(g === gen && S.playing && !S.paused) speakUnit(); };
+  // Speaking straight from the tap keeps Android's speech engine happy.
+  if(active) setTimeout(start, isMobileSpeech ? 260 : 60);
+  else start();
+}
+function buildSpeechBatch(startIndex){
+  const page = S.pages[S.pageIdx], first = page && page.units[startIndex];
+  if(!first) return null;
+  const units = [], map = [];
+  let spoken = "", endIndex = startIndex - 1;
+  for(let i = startIndex; i < page.units.length; i++){
+    const unit = page.units[i];
+    if(i > startIndex && (unit.p !== first.p || units.length >= 4)) break;
+    const transformed = speechTransform(unit.text, unit.start || 0);
+    const part = transformed.spoken;
+    const separator = spoken && part && !/\s$/.test(spoken) && !/^\s/.test(part) ? " " : "";
+    if(units.length && spoken.length + separator.length + part.length > 480) break;
+    units.push(unit); endIndex = i;
+    if(separator){ spoken += separator; map.push(unit.start || 0); }
+    spoken += part; map.push(...transformed.map);
+  }
+  return {spoken, map, units, endIndex};
+}
+function speakUnit(retryAttempt){
+  const g = gen;
+  const u = currentUnit();
+  if(!u){ chapterFinished(); return; }
+  stopHlFallback(); clearTimeout(wdTimer);
+  const batch = buildSpeechBatch(pos.u);
+  if(!batch) return;
+  const {spoken, map} = batch;
+  const fw = findWord(u.p, u.start, u);
+  highlightUnit(u, fw ? fw.s : u.start);
+  updateStats();
+  if(!spoken.trim()){ pos.u = batch.endIndex; setTimeout(() => { if(g === gen) nextUnit(); }, 0); return; }
+  if(isPiperVoice()){ piperSpeak(batch, g); return; }
+  const ut = new SpeechSynthesisUtterance(spoken);
+  applyVoice(ut);
+  ut.rate = S.settings.rate;
+  let started = false;
+  let fired = false;
+  let maxCharIdx = -1;
+  activeUtterance = ut; // keep a reference so it isn't garbage-collected mid-speech
+  ut.onstart = () => {
+    if(g !== gen) return;
+    started = true;
+    utStart = performance.now();
+    lastBoundaryAt = performance.now();
+    clearTimeout(boundaryTimer);
+    boundaryTimer = setTimeout(() => {
+      if(g !== gen || fired) return;
+      const sEl = $("content").querySelector(`p[data-p="${u.p}"] .sent[data-sid="${u.sid}"]`);
+      if(S.settings.highlight === "word" && sEl && !curHlW){
+        sEl.classList.add("hl-s");
+        curHlS = sEl;
+      }
+    }, 900);
+    startHlFallback(batch, g);
+  };
+  ut.onboundary = e => {
+    if(g !== gen || e.charIndex == null) return;
+    // Only accept word boundaries to prevent sentence boundaries resetting charIndex to 0
+    if(e.name && e.name !== "word") return;
+    // Ensure boundary index monotonically advances to prevent jitter
+    if(e.charIndex < maxCharIdx) return;
+    maxCharIdx = e.charIndex;
+    fired = true;
+    lastBoundaryAt = performance.now();
+    clearTimeout(boundaryTimer);
+    const orig = map.length ? map[clamp(e.charIndex, 0, map.length - 1)] : (u.start || 0);
+    highlightUnit(speechUnitForOffset(batch.units, orig), orig, false);
+  };
+  ut.onend = () => {
+    clearTimeout(boundaryTimer); stopHlFallback(); clearTimeout(wdTimer); stallRetries = 0;
+    if(activeUtterance === ut) activeUtterance = null;
+    if(g === gen){ pos.u = batch.endIndex; nextUnit(); }
+  };
+  ut.onerror = e => {
+    clearTimeout(boundaryTimer); stopHlFallback();
+    if(activeUtterance === ut) activeUtterance = null;
+    clearTimeout(wdTimer);
+    if(g !== gen) return;
+    if(e.error === "interrupted" || e.error === "canceled"){
+      // the system (not the user) cut the speech off: retry, then move on
+      if(S.playing && !S.paused){
+        if(stallRetries++ < 2) setTimeout(() => { if(g === gen && S.playing && !S.paused) restartSpeech(); }, 250);
+        else { stallRetries = 0; if(!retryWithFallbackVoice(ut, e.error)) nextUnit(); }
+      }
+      return;
+    }
+    if(retryWithFallbackVoice(ut, e.error)) return;
+    setStatus("Speech error: " + e.error);
+    nextUnit();
+  };
+  try{ if(speechSynthesis.paused) speechSynthesis.resume(); }catch(e){}
+  try{ speechSynthesis.speak(ut); }
+  catch(e){ if(retryWithFallbackVoice(ut, e.message)) return; setStatus("Speech failed: " + e.message); return; }
+  setStatus("Reading");
+  // Watchdog: if the browser never ends the utterance, recover instead of freezing.
+  const wd = () => {
+    if(g !== gen || !S.playing || S.paused) return;
+    if(fired && speechSynthesis.speaking && performance.now() - lastBoundaryAt < 5000){ wdTimer = setTimeout(wd, 2500); return; }
+    if(stallRetries++ < 1) restartSpeech();
+    else { stallRetries = 0; gen++; try{ speechSynthesis.cancel(); }catch(e){} setTimeout(() => { if(S.playing && !S.paused) nextUnit(); }, 150); }
+  };
+  wdTimer = setTimeout(wd, spoken.length * 120 / Math.max(0.5, S.settings.rate) + 7000);
+  // Some Android builds drop the very first utterance without an error; retry once.
+  if(isMobileSpeech && !retryAttempt){
+    setTimeout(() => {
+      if(g !== gen || started || !S.playing || S.paused) return;
+      try{ speechSynthesis.cancel(); }catch(e){}
+      setTimeout(() => {
+        if(g === gen && S.playing && !S.paused && !started) speakUnit(true);
+      }, 280);
+    }, 1200);
+  }
+}
+function nextUnit(){
+  pos.u++;
+  const page = S.pages[S.pageIdx];
+  if(page && pos.u < page.units.length){ speakUnit(); return; }
+  if(S.pageIdx + 1 < S.pages.length){
+    S.pageIdx++; pos.u = 0; renderPage(); saveProgress(); speakUnit();
+  } else chapterFinished();
+}
+async function chapterFinished(){
+  if(S.settings.autoContinue){
+    if(S.book && S.book.source !== "web" && S.chapterIdx + 1 < S.book.chapters.length){
+      toast("Continuing to the next chapter…");
+      loadChapter(S.chapterIdx + 1, {autoplay:true});
+      return;
+    }
+    if(S.book && S.book.source === "web"){
+      const next = S.book.webNextUrl;
+      if(next){
+        const idx = S.book.chapters.findIndex(c => sameUrl(c.url, next));
+        if(idx >= 0){
+          toast("Continuing to the next chapter…");
+          loadChapter(idx, {autoplay:true});
+        } else {
+          toast("Continuing to the next web chapter…");
+          await loadWebBook(next, {autoplay:true, keepId: S.book.id});
+        }
+        return;
+      }
+      if(S.chapterIdx + 1 < S.book.chapters.length){
+        toast("Continuing to the next chapter…");
+        loadChapter(S.chapterIdx + 1, {autoplay:true});
+        return;
+      }
+    }
+  }
+  S.playing = false; S.paused = false;
+  updateTransport(); setStatus("Finished"); toast("Chapter finished.");
+}
+function togglePlay(){
+  if(!ttsOK && !window.PiperBridge){ toast("Speech synthesis is not available in this browser. Try Chrome or Edge."); return; }
+  if(!S.book || !S.pages.length || !currentUnit()){ toast("Open a book or read a page first."); return; }
+  if(S.playing && !S.paused){ pausePlayback(); return; }
+  if(S.playing && S.paused){ resumePlayback(); return; }
+  S.playing = true; S.paused = false;
+  if(cinemaAuto && !document.body.classList.contains("cinema")) cinemaOn();
+  updateTransport(); restartSpeech();
+}
+function pausePlayback(){
+  S.paused = true; clearTimeout(wdTimer);
+  if(piperAudio){ try{ piperAudio.pause(); }catch(e){} updateTransport(); setStatus("Paused"); return; }
+  try{ speechSynthesis.pause(); }catch(e){}
+  if(!speechSynthesis.paused){ gen++; try{ speechSynthesis.cancel(); }catch(e){} S.needRespeak = true; }
+  updateTransport(); setStatus("Paused");
+}
+function resumePlayback(){
+  S.paused = false;
+  if(cinemaAuto && !document.body.classList.contains("cinema")) cinemaOn();
+  if(piperAudio){ try{ piperAudio.play(); }catch(e){} updateTransport(); setStatus("Reading"); return; }
+  if(S.needRespeak){ S.needRespeak = false; restartSpeech(); }
+  else {
+    try{ speechSynthesis.resume(); }catch(e){}
+    setTimeout(() => { if(S.playing && !S.paused && !speechSynthesis.speaking && !speechSynthesis.pending) restartSpeech(); }, 300);
+  }
+  updateTransport(); setStatus("Reading");
+}
+function stopPlayback(){
+  gen++; playbackStopToken++; clearTimeout(wdTimer);
+  stopHlFallback();
+  piperStop(); piperPre = null;
+  activeUtterance = null;
+  try{ speechSynthesis.cancel(); }catch(e){}
+  S.playing = false; S.paused = false; S.needRespeak = false;
+  if(document.body.classList.contains("cinema")) cinemaOff();
+  clearHighlights(); updateTransport(); setStatus("Ready"); updateStats();
+}
+function seekSentence(d){
+  const page = S.pages[S.pageIdx];
+  if(!page || !page.units.length) return;
+  pos.u = clamp(pos.u + d, 0, page.units.length - 1);
+  if(S.playing && !S.paused) restartSpeech();
+  else { const u = currentUnit(); if(u){ const fw = findWord(u.p, u.start, u); highlightUnit(u, fw ? fw.s : u.start); } updateStats(); }
+}
+function goToPage(i, opts = {}){
+  i = clamp(i, 0, S.pages.length - 1);
+  if(i === S.pageIdx && !opts.force) return;
+  S.pageIdx = i; pos.u = 0;
+  renderPage(); saveProgress();
+  if(opts.scroll !== false) $("readerCard").scrollIntoView({behavior:"smooth", block:"start"});
+  if(S.playing && !S.paused) restartSpeech();
+  else if(S.playing && S.paused) S.needRespeak = true;
+}
+function updateTransport(){
+  const b = $("btnPlay");
+  b.textContent = S.playing && !S.paused ? "⏸︎" : "▶︎";
+  b.classList.toggle("playing", S.playing && !S.paused);
+  b.title = S.playing && !S.paused ? "Pause" : "Play";
+  holdWake(S.playing && !S.paused);
+  document.body.classList.toggle("reading-active", S.playing && !S.paused);
+  syncAmbientMusic();
+  if(S.playing && !S.paused) orbCollapse(); else orbExpand();
+}
+const AMBIENT_MOODS = {
+  calm:{cutoff:900,noise:0,noiseCutoff:1200,interval:12000,chords:[[130.81,164.81,196,246.94],[110,164.81,196,261.63],[87.31,130.81,164.81,220],[98,146.83,196,246.94]]},
+  fantasy:{cutoff:1100,noise:0,noiseCutoff:1200,interval:12000,chords:[[146.83,220,293.66,369.99],[123.47,185,246.94,293.66],[164.81,246.94,329.63,392],[110,164.81,220,293.66]]},
+  mystery:{cutoff:700,noise:0.025,noiseCutoff:500,interval:14000,chords:[[110,164.81,196,233.08],[116.54,174.61,220,261.63],[98,146.83,185,233.08],[87.31,130.81,164.81,207.65]]},
+  nature:{cutoff:900,noise:0.1,noiseCutoff:2600,interval:16000,chords:[[98,146.83,196,246.94],[110,164.81,220,261.63],[82.41,123.47,164.81,220],[98,130.81,196,233.08]]},
+  blizzard:{cutoff:650,noise:0.16,noiseCutoff:950,interval:18000,chords:[[65.41,98,130.81,164.81],[73.42,110,146.83,185],[55,82.41,110,146.83],[65.41,98,123.47,155.56]]},
+  crickets:{cutoff:5200,noise:0.008,noiseCutoff:7000,interval:18000,chords:[],effect:"crickets"},
+  thriller:{cutoff:520,noise:0.018,noiseCutoff:380,interval:16000,chords:[[55,82.41,110,130.81],[58.27,87.31,116.54,138.59],[49,73.42,98,123.47],[51.91,77.78,103.83,123.47]]},
+  action:{cutoff:1300,noise:0,noiseCutoff:1200,interval:5000,chords:[[130.81,196,261.63,329.63],[146.83,220,293.66,369.99],[110,164.81,220,293.66],[164.81,246.94,329.63,392]],effect:"pulse"},
+  fireplace:{cutoff:780,noise:0.035,noiseCutoff:850,interval:16000,chords:[[82.41,123.47,164.81,196],[73.42,110,146.83,185],[87.31,130.81,174.61,207.65],[65.41,98,146.83,174.61]],effect:"crackle"}
+};
+let ambientContext = null, ambientMaster = null, ambientFilter = null, ambientVoices = [];
+let ambientNoiseFilter = null, ambientNoiseGain = null, ambientEffectOscillator = null, ambientEffectGain = null;
+let ambientFileAudio = null, ambientFileUrl = "", ambientAudioSource = "", ambientAudioGeneration = 0;
+let ambientChordTimer = null, ambientEffectTimer = null, ambientSuspendTimer = null, ambientMoodKey = "", ambientChordIndex = 0, ambientErrorShown = false;
+function reportAmbientError(error){
+  if(ambientErrorShown) return;
+  ambientErrorShown = true;
+  const detail = error && error.message ? ": " + error.message : "";
+  toast("Background music unavailable" + detail + ".");
+}
+function ensureAmbientAudio(){
+  if(ambientContext) return true;
+  const AudioContextType = window.AudioContext || window.webkitAudioContext;
+  if(!AudioContextType){ reportAmbientError(new Error("This browser does not support Web Audio.")); return false; }
+  let context = null;
+  try{
+    context = new AudioContextType();
+    const filter = context.createBiquadFilter();
+    filter.type = "lowpass"; filter.frequency.value = 900; filter.Q.value = 0.35;
+    const master = context.createGain();
+    master.gain.value = 0;
+    filter.connect(master); master.connect(context.destination);
+    const voices = [];
+    for(let i = 0; i < 4; i++){
+      const oscillator = context.createOscillator(), gain = context.createGain();
+      oscillator.type = "sine"; gain.gain.value = 0.12;
+      oscillator.connect(gain); gain.connect(filter); oscillator.start();
+      voices.push(oscillator);
+    }
+    const noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+    const noiseData = noiseBuffer.getChannelData(0);
+    for(let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
+    const noiseSource = context.createBufferSource(), noiseFilter = context.createBiquadFilter(), noiseGain = context.createGain();
+    noiseSource.buffer = noiseBuffer; noiseSource.loop = true;
+    noiseFilter.type = "lowpass"; noiseFilter.frequency.value = 1200;
+    noiseGain.gain.value = 0;
+    noiseSource.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(master); noiseSource.start();
+    const effectOscillator = context.createOscillator(), effectGain = context.createGain();
+    effectOscillator.type = "sine"; effectOscillator.frequency.value = 4200; effectGain.gain.value = 0;
+    effectOscillator.connect(effectGain); effectGain.connect(filter); effectOscillator.start();
+    ambientContext = context; ambientFilter = filter; ambientMaster = master; ambientVoices = voices;
+    ambientNoiseFilter = noiseFilter; ambientNoiseGain = noiseGain;
+    ambientEffectOscillator = effectOscillator; ambientEffectGain = effectGain;
+    ambientErrorShown = false;
+    return true;
+  }catch(error){
+    if(context) context.close().catch(() => {});
+    reportAmbientError(error);
+    return false;
+  }
+}
+function setAmbientChord(){
+  if(!ambientContext || !ambientMaster || !S.playing || S.paused) return;
+  const mood = AMBIENT_MOODS[S.settings.ambientMusic];
+  if(!mood) return;
+  const now = ambientContext.currentTime;
+  if(mood.chords.length){
+    const notes = mood.chords[ambientChordIndex % mood.chords.length];
+    ambientVoices.forEach((oscillator, i) => oscillator.frequency.setTargetAtTime(notes[i], now, 2.2));
+    ambientChordIndex++;
+  }
+  ambientFilter.frequency.setTargetAtTime(mood.cutoff, now, 2.2);
+  ambientNoiseFilter.frequency.setTargetAtTime(mood.noiseCutoff, now, 2.2);
+  ambientNoiseGain.gain.setTargetAtTime(mood.noise, now, 1.2);
+  ambientChordTimer = setTimeout(setAmbientChord, mood.interval);
+}
+function setAmbientEffect(){
+  if(!ambientContext || !ambientEffectOscillator || !ambientEffectGain || !S.playing || S.paused) return;
+  const mood = AMBIENT_MOODS[S.settings.ambientMusic];
+  if(!mood || !mood.effect) return;
+  const now = ambientContext.currentTime;
+  let delay = 1000;
+  if(mood.effect === "crickets"){
+    ambientEffectOscillator.frequency.setTargetAtTime(3600 + Math.random() * 900, now, 0.01);
+    ambientEffectGain.gain.cancelScheduledValues(now);
+    ambientEffectGain.gain.setTargetAtTime(0.055, now, 0.01);
+    ambientEffectGain.gain.setTargetAtTime(0, now + 0.08, 0.025);
+    delay = 450 + Math.random() * 1200;
+  }else if(mood.effect === "pulse"){
+    ambientEffectOscillator.frequency.setTargetAtTime(58, now, 0.01);
+    ambientEffectGain.gain.cancelScheduledValues(now);
+    ambientEffectGain.gain.setTargetAtTime(0.09, now, 0.015);
+    ambientEffectGain.gain.setTargetAtTime(0, now + 0.11, 0.035);
+    delay = 520;
+  }else if(mood.effect === "crackle"){
+    ambientNoiseGain.gain.setTargetAtTime(mood.noise + 0.09 + Math.random() * 0.08, now, 0.01);
+    ambientNoiseGain.gain.setTargetAtTime(mood.noise, now + 0.035, 0.035);
+    delay = 350 + Math.random() * 900;
+  }
+  ambientEffectTimer = setTimeout(setAmbientEffect, delay);
+}
+function setAmbientAudioSource(source){
+  if(!source) return;
+  if(!ambientFileAudio){
+    ambientFileAudio = new Audio();
+    ambientFileAudio.loop = true;
+    ambientFileAudio.preload = "metadata";
+  }
+  if(ambientAudioSource === source) return;
+  ambientFileAudio.pause();
+  const generation = ++ambientAudioGeneration;
+  ambientFileAudio.onerror = () => {
+    if(generation === ambientAudioGeneration) reportAmbientError(new Error("The selected track could not be loaded or is not supported by this browser."));
+  };
+  ambientFileAudio.src = source;
+  ambientAudioSource = source;
+  ambientErrorShown = false;
+  ambientFileAudio.load();
+}
+function syncAmbientFile(shouldPlay, source){
+  if(source) setAmbientAudioSource(source);
+  if(!ambientFileAudio) return;
+  if(shouldPlay && S.settings.ambientMusic === "file" && !ambientFileUrl){
+    if(!ambientFileAudio.paused) ambientFileAudio.pause();
+    return;
+  }
+  ambientFileAudio.volume = clamp(Number(S.settings.ambientVolume), 0, 1);
+  if(shouldPlay){
+    if(ambientFileAudio.paused) ambientFileAudio.play().catch(error => {
+      if(error && error.name === "AbortError") return;
+      if(S.playing && !S.paused && (S.settings.ambientMusic === "file" || AMBIENT_TRACKS[S.settings.ambientMusic])) reportAmbientError(error);
+    });
+  }else if(!ambientFileAudio.paused) ambientFileAudio.pause();
+}
+function updateAmbientFileControls(){
+  $("ambientFileWrap").hidden = S.settings.ambientMusic !== "file";
+}
+function loadAmbientFile(file){
+  if(!file) return;
+  let url;
+  try{ url = URL.createObjectURL(file); }
+  catch(error){ reportAmbientError(error); return; }
+  const previousUrl = ambientFileUrl;
+  ambientFileUrl = url;
+  setAmbientAudioSource(url);
+  if(previousUrl) URL.revokeObjectURL(previousUrl);
+  $("ambientFileName").textContent = file.name + " — plays locally and is not uploaded.";
+  S.settings.ambientMusic = "file";
+  $("ambientMusic").value = "file";
+  updateAmbientFileControls();
+  saveSettings();
+  syncAmbientMusic();
+}
+function stopAmbientSynthesis(){
+  if(!ambientMoodKey || !ambientContext || !ambientMaster) return;
+  clearTimeout(ambientChordTimer); ambientChordTimer = null;
+  clearTimeout(ambientEffectTimer); ambientEffectTimer = null;
+  ambientMoodKey = "";
+  const now = ambientContext.currentTime;
+  ambientMaster.gain.cancelScheduledValues(now);
+  ambientMaster.gain.setTargetAtTime(0, now, 0.45);
+  clearTimeout(ambientSuspendTimer);
+  ambientSuspendTimer = setTimeout(() => {
+    if(!((S.playing && !S.paused) && AMBIENT_MOODS[S.settings.ambientMusic]) && ambientContext.state === "running"){
+      ambientContext.suspend().catch(reportAmbientError);
+    }
+  }, 1400);
+}
+function syncAmbientMusic(){
+  const musicMode = S.settings.ambientMusic;
+  const shouldPlay = S.playing && !S.paused && musicMode !== "off";
+  if(musicMode === "file"){
+    stopAmbientSynthesis();
+    syncAmbientFile(shouldPlay, ambientFileUrl);
+    return;
+  }
+  const track = AMBIENT_TRACKS[musicMode];
+  if(track){
+    stopAmbientSynthesis();
+    const source = shouldPlay ? new URL(track, document.baseURI).href : "";
+    syncAmbientFile(shouldPlay, source);
+    return;
+  }
+  syncAmbientFile(false);
+  if(!shouldPlay){
+    stopAmbientSynthesis();
+    return;
+  }
+  if(!ensureAmbientAudio()) return;
+  clearTimeout(ambientSuspendTimer); ambientSuspendTimer = null;
+  if(ambientContext.state === "suspended") ambientContext.resume().catch(reportAmbientError);
+  const now = ambientContext.currentTime;
+  ambientMaster.gain.cancelScheduledValues(now);
+  ambientMaster.gain.setTargetAtTime(clamp(Number(S.settings.ambientVolume), 0, 1), now, 0.7);
+  if(ambientMoodKey !== S.settings.ambientMusic){
+    clearTimeout(ambientChordTimer);
+    clearTimeout(ambientEffectTimer);
+    ambientMoodKey = S.settings.ambientMusic;
+    ambientChordIndex = 0;
+    setAmbientChord();
+    setAmbientEffect();
+  }
+}
+/* Orb mode: fold the dock into a sphere that docks to the left or right screen edge, away from the text.
+   Tap the sphere to fan the menu bar out beside it; drag the sphere to the other side or up/down. */
+let orbTimer = null;
+let orbSide = "r", orbY = 0.6;
+try{ orbSide = localStorage.getItem("urOrbSide") === "l" ? "l" : "r"; orbY = parseFloat(localStorage.getItem("urOrbY")); if(!(orbY > 0 && orbY < 1)) orbY = 0.6; }catch(e){}
+function applyOrbPos(){
+  const t = $("transport");
+  t.classList.toggle("side-r", orbSide !== "l");
+  t.classList.toggle("side-l", orbSide === "l");
+  const h = t.offsetHeight || 56;
+  const cy = Math.max(200, Math.min(innerHeight - 176, orbY * innerHeight));
+  t.style.top = Math.round(cy - h/2) + "px";
+  t.style.left = orbSide === "r" ? "calc(100vw - 68px)" : "12px";
+  t.style.right = "auto";
+}
+function orbCollapse(){
+  const t = $("transport");
+  if(t.classList.contains("orb") || t.classList.contains("folding")) return;
+  t.style.width = t.offsetWidth + "px";
+  t.classList.add("folding");
+  setTimeout(() => { if(S.playing && !S.paused){ t.classList.add("orb"); applyOrbPos(); } }, 440);
+}
+function orbExpand(){
+  const t = $("transport"); clearTimeout(orbTimer);
+  if(!t.classList.contains("folding") && !t.classList.contains("orb")) return;
+  t.classList.remove("open", "orb", "dragging", "side-r", "side-l");
+  t.style.width = ""; t.style.left = ""; t.style.right = ""; t.style.top = "";
+  requestAnimationFrame(() => requestAnimationFrame(() => { if(!(S.playing && !S.paused)) t.classList.remove("folding"); }));
+}
+function orbOpen(on){
+  const t = $("transport"); clearTimeout(orbTimer);
+  t.classList.toggle("open", !!on);
+  if(on) orbTimer = setTimeout(() => orbOpen(false), 6000);
+}
+(function(){
+  const t = $("transport");
+  /* Drag the docked sphere along the edge, or fling it to the opposite side.
+     Tap = play/pause. Long-press (~0.4s) = open/close the menu fan. */
+  let drag = null, dragMoved = false, lpTimer = null, lpFired = false;
+  t.addEventListener("pointerdown", e => {
+    if(!t.classList.contains("orb") || t.classList.contains("open")) return;
+    drag = {id:e.pointerId, sx:e.clientX, sy:e.clientY, l:t.offsetLeft, tp:t.offsetTop, moved:false};
+    lpFired = false;
+    clearTimeout(lpTimer);
+    lpTimer = setTimeout(() => { lpFired = true; drag = null; t.classList.remove("dragging"); orbOpen(true); }, 420);
+  });
+  t.addEventListener("pointermove", e => {
+    if(!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    if(!drag.moved && Math.hypot(dx, dy) < 12){ return; }
+    clearTimeout(lpTimer);
+    if(!drag.moved){ drag.moved = true; t.classList.add("dragging"); orbOpen(false); try{ t.setPointerCapture(e.pointerId); }catch(_){} }
+    t.style.left = Math.round(drag.l + dx) + "px";
+    t.style.top = Math.round(clamp(drag.tp + dy, 172, innerHeight - 204)) + "px";
+  });
+  const endDrag = e => {
+    clearTimeout(lpTimer);
+    if(!drag || (e.pointerId !== undefined && e.pointerId !== drag.id)) return;
+    const moved = drag.moved; drag = null;
+    t.classList.remove("dragging");
+    if(!moved) return;
+    dragMoved = true; setTimeout(() => dragMoved = false, 350);
+    const cx = t.offsetLeft + t.offsetWidth/2;
+    orbSide = cx < innerWidth/2 ? "l" : "r";
+    orbY = clamp((t.offsetTop + t.offsetHeight/2) / (innerHeight || 1), 0, 1);
+    try{ localStorage.setItem("urOrbSide", orbSide); localStorage.setItem("urOrbY", String(orbY)); }catch(_){}
+    applyOrbPos();
+  };
+  t.addEventListener("pointerup", endDrag);
+  t.addEventListener("pointercancel", endDrag);
+  document.addEventListener("pointerup", endDrag, true);
+  document.addEventListener("pointercancel", endDrag, true);
+  addEventListener("resize", () => { if(t.classList.contains("orb")) applyOrbPos(); });
+  t.addEventListener("click", e => {
+    if(dragMoved){ dragMoved = false; e.stopPropagation(); e.preventDefault(); return; }
+    if(lpFired){ lpFired = false; e.stopPropagation(); e.preventDefault(); return; }
+    if(t.classList.contains("orb") && !t.classList.contains("open") && (e.target.closest("#btnPlay") || e.target === t)){
+      e.stopPropagation(); e.preventDefault(); togglePlay(); return;   /* tap the orb: pause / play right away */
+    }
+    if(t.classList.contains("open")){
+      if(e.target.closest("#btnPages,#btnBookmark,#btnSettings,#btnStop")) setTimeout(() => orbOpen(false), 150);
+      else orbOpen(true);
+    }
+  }, true);
+  document.addEventListener("pointerdown", e => { if(t.classList.contains("open") && !t.contains(e.target)) orbOpen(false); });
+})();
+/* Keep the screen awake while reading, and restart speech if the phone silenced it in the background. */
+async function holdWake(on){
+  try{
+    if(on && "wakeLock" in navigator && !wakeLock){ wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); }
+    else if(!on && wakeLock){ const w = wakeLock; wakeLock = null; await w.release(); }
+  }catch(e){ wakeLock = null; }
+}
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState !== "visible" || !S.playing || S.paused) return;
+  holdWake(true);
+  setTimeout(() => { if(S.playing && !S.paused && !speechSynthesis.speaking && !speechSynthesis.pending) restartSpeech(); }, 400);
+});
+setInterval(() => {
+  try{
+    const remoteVoice = activeUtterance && activeUtterance.voice && activeUtterance.voice.localService === false;
+    // Pause/resume can silence browser-managed remote voices.
+    if(!remoteVoice && !isMobileSpeech && S.playing && !S.paused && speechSynthesis.speaking && !speechSynthesis.paused && performance.now() - utStart > 12000){
+      speechSynthesis.pause(); speechSynthesis.resume(); utStart = performance.now();
+    }
+  }catch(e){}
+}, 9000);
+
+/* ---------- Reading HUD sync: mirrors title / chapter / time / page everywhere ---------- */
+function syncHud(){
+  const hud = $("readingHud"); if(!hud) return;
+  hud.hidden = !S.book;
+  document.body.classList.toggle("book-open", !!S.book);
+  if(!S.book) return;
+  const set = (id, v) => { const n = $(id); if(n && n.textContent !== v) n.textContent = v; };
+  set("hudTitle", S.book.title || "Untitled");
+  set("hudCh", ($("chTitle").textContent || "").trim() || "Chapter");
+  set("hudTime", $("timeLeft").textContent);
+  set("hudPage", $("pageInfo").textContent);
+  syncPip();
+}
+setInterval(syncHud, 700);
+
+/* ---------- Reading environment: cinema lights-off, full screen, pop-out window ---------- */
+let cinemaMode = "tab", cinemaAuto = true, pipWin = null, popWin = null, cinemaIdleTimer = null;
+try{
+  const m = localStorage.getItem("urCinemaMode");
+  if(m === "tab" || m === "full" || m === "pip") cinemaMode = m;
+  cinemaAuto = localStorage.getItem("urCinemaAuto") !== "0";
+}catch(e){}
+function updateCinemaUI(){
+  const on = document.body.classList.contains("cinema");
+  const pipOpen = !!(popWin && !popWin.closed) || !!(pipWin && !pipWin.closed);
+  [["btnCineTab", cinemaMode === "tab" && on], ["btnCineFull", cinemaMode === "full"], ["btnCinePip", cinemaMode === "pip" && pipOpen],
+   ["btnCineFullBar", cinemaMode === "full"], ["btnCinePipBar", cinemaMode === "pip" && pipOpen]].forEach(([id, act]) => {
+    const b = $(id); if(b) b.classList.toggle("active", !!act);
+  });
+  const cb = $("cinemaAuto"); if(cb) cb.checked = cinemaAuto;
+}
+function nudgeCinemaBar(){
+  document.body.classList.remove("cinema-idle");
+  clearTimeout(cinemaIdleTimer);
+  cinemaIdleTimer = setTimeout(() => { if(document.body.classList.contains("cinema")) document.body.classList.add("cinema-idle"); }, 6000);
+}
+document.addEventListener("pointermove", () => { if(document.body.classList.contains("cinema")) nudgeCinemaBar(); });
+document.addEventListener("pointerdown", () => { if(document.body.classList.contains("cinema")) nudgeCinemaBar(); });
+function enterFullscreen(){
+  const el = document.documentElement;
+  if(document.fullscreenElement){ try{ document.exitFullscreen(); }catch(e){} return; }
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if(fn){
+    try{ const r = fn.call(el); if(r && r.catch) r.catch(() => toast("Full screen was blocked.")); }
+    catch(e){ toast("Full screen is not available here."); }
+  }
+  else toast("Full screen is not supported in this browser — use Lights off or Pop-out instead.");
+}
+async function enterPip(){
+  if(popWin && !popWin.closed){ try{ popWin.focus(); }catch(e){} return; }
+  /* Preferred: open the whole app in a real, freely resizable full-screen window.
+     It shares your library and reading position, and carries every control. */
+  const base = location.href.split("#")[0].split("?")[0];
+  const readId = S.book ? S.book.id : "";
+  const url = base + (readId ? "?read=" + encodeURIComponent(readId) + "&env=1" : "?env=1");
+  try{
+    popWin = window.open(url, "_blank", "popup=1,width=" + (screen.availWidth || screen.width) + ",height=" + (screen.availHeight || screen.height));
+  }catch(e){ popWin = null; }
+  if(popWin){ try{ popWin.focus(); }catch(e){} toast("Reading window opened — this window stays fully usable."); return; }
+  /* Fallback: Document Picture-in-Picture mirror with its own transport dock */
+  if(!("documentPictureInPicture" in window)){
+    toast("Pop-out was blocked — allow pop-ups for this site, or use Lights off / Full screen instead.");
+    cinemaMode = "tab"; try{ localStorage.setItem("urCinemaMode", "tab"); }catch(e){}
+    document.body.classList.add("cinema"); updateCinemaUI(); return;
+  }
+  if(pipWin && !pipWin.closed){ pipWin.focus(); return; }
+  let w;
+  /* Same canvas as the fullscreen tab (still freely resizable) */
+  try{ w = pipWin = await documentPictureInPicture.requestWindow({width: screen.availWidth || screen.width, height: screen.availHeight || screen.height}); }
+  catch(e){ toast("Pop-out was blocked by the browser."); return; }
+  w.document.title = (S.book ? S.book.title + " — " : "") + "Ultra Pro Reader";
+  /* Copy every stylesheet so the pop-out looks identical and can be resized freely */
+  [...document.styleSheets].forEach(ss => {
+    try{
+      const st = w.document.createElement("style");
+      st.textContent = [...ss.cssRules].map(r => r.cssText).join("\n");
+      w.document.head.appendChild(st);
+    }catch(e){
+      if(ss.href){ const l = w.document.createElement("link"); l.rel = "stylesheet"; l.href = ss.href; w.document.head.appendChild(l); }
+    }
+  });
+  w.document.body.setAttribute("data-theme", document.body.getAttribute("data-theme") || "dark");
+  w.document.body.classList.add("pip-window");
+  w.document.body.innerHTML = `
+    <div id="readingHud">
+      <span class="hud-title" id="hudTitle"></span><span class="hud-sep">·</span><span class="hud-ch" id="hudCh"></span>
+      <span class="hud-right"><span id="hudTime"></span><span class="hud-sep">·</span><span id="hudPage"></span></span>
+    </div>
+    <div class="reader-card" id="readerCard"><h2 id="chapterHeading"></h2><div id="content"></div></div>
+    <div id="hudProgress">
+      <div class="hud-pr"><span>Book</span><div class="hud-track"><div class="hud-fill" id="hudBookFill"></div></div><b id="hudBookPct">0%</b></div>
+      <div class="hud-pr"><span>Chapter</span><div class="hud-track"><div class="hud-fill ch" id="hudChFill"></div></div><b id="hudChPct">0%</b></div>
+    </div>
+    <div class="pip-dock" id="pipDock">
+      <button class="tbtn" data-act="pages" title="Pages & chapters (opens in main window)">☰</button>
+      <button class="tbtn" data-act="prevPage" title="Previous page">«</button>
+      <button class="tbtn" data-act="bookmark" title="Add bookmark">🔖</button>
+      <button class="tbtn" data-act="prevSent" title="Previous sentence">⏮︎</button>
+      <button class="tbtn play" id="pipPlay" title="Play / pause">▶︎</button>
+      <button class="tbtn" data-act="nextSent" title="Next sentence">⏭︎</button>
+      <button class="tbtn" data-act="stop" title="Stop">■</button>
+      <button class="tbtn" data-act="settings" title="Voice & settings (opens in main window)">⚙</button>
+      <button class="tbtn" data-act="nextPage" title="Next page">»</button>
+    </div>`;
+  /* Wire the pop-out's own controls to the reader running in the main window */
+  const dock = w.document.getElementById("pipDock");
+  const acts = {
+    pages: () => { try{ window.focus(); }catch(e){} openDrawer("Pages"); },
+    settings: () => { try{ window.focus(); }catch(e){} openDrawer("Voice"); },
+    bookmark: addBookmark,
+    prevSent: () => seekSentence(-1),
+    nextSent: () => seekSentence(1),
+    prevPage: () => goToPage(S.pageIdx - 1),
+    nextPage: () => goToPage(S.pageIdx + 1),
+    stop: stopPlayback
+  };
+  dock.addEventListener("click", e => {
+    const b = e.target.closest("[data-act]"); if(!b) return;
+    if(b.id === "pipPlay"){ togglePlay(); return; }
+    const fn = acts[b.dataset.act]; if(fn) fn();
+  });
+  w.addEventListener("pagehide", () => {
+    pipWin = null;
+    /* Only react to the user closing the window itself; a programmatic close
+       (Lights on / switching mode) already set the state we want. */
+    if(!document.body.classList.contains("cinema") || cinemaMode !== "pip"){ updateCinemaUI(); return; }
+    cinemaMode = "tab"; try{ localStorage.setItem("urCinemaMode", "tab"); }catch(e){}
+    updateCinemaUI();
+  });
+  updateCinemaUI(); syncPip();
+}
+function syncPip(){
+  if(!pipWin || pipWin.closed) return;
+  try{
+    const d = pipWin.document, c = $("content"), ch = $("chapterHeading");
+    if(!c || !ch) return;
+    if(d.body.getAttribute("data-theme") !== document.body.getAttribute("data-theme")) d.body.setAttribute("data-theme", document.body.getAttribute("data-theme"));
+    d.body.classList.toggle("cinema", document.body.classList.contains("cinema"));
+    const set = (id, v) => { const n = d.getElementById(id); if(n && n.textContent !== v) n.textContent = v; };
+    const sourceCard = $("readerCard"), targetCard = d.getElementById("readerCard");
+    if(sourceCard && targetCard){
+      ["--reading-bg","--reading-text"].forEach(name => targetCard.style.setProperty(name, sourceCard.style.getPropertyValue(name)));
+    }
+    set("hudTitle", S.book ? (S.book.title || "Untitled") : "—");
+    set("hudCh", ($("chTitle").textContent || "").trim() || "Chapter");
+    set("hudTime", $("timeLeft").textContent);
+    set("hudPage", $("pageInfo").textContent);
+    const hud = d.getElementById("readingHud"); if(hud) hud.hidden = !S.book;
+    set("chapterHeading", ch.textContent);
+    const cc = d.getElementById("content");
+    if(cc && cc.innerHTML !== c.innerHTML) cc.innerHTML = c.innerHTML;
+    const pp = d.getElementById("pipPlay");
+    if(pp){ const want = (S.playing && !S.paused) ? "⏸︎" : "▶︎"; if(pp.textContent !== want) pp.textContent = want; }
+  }catch(e){}
+}
+function cinemaOn(mode){
+  if(mode && mode !== cinemaMode){
+    cinemaMode = mode; try{ localStorage.setItem("urCinemaMode", mode); }catch(e){}
+    if(mode !== "pip"){
+      if(pipWin && !pipWin.closed){ try{ pipWin.close(); }catch(e){} }
+      if(popWin && !popWin.closed){ try{ popWin.close(); }catch(e){} }
+    }
+  }
+  if(cinemaMode === "pip"){
+    /* Reading lives in its own window — keep THIS window fully usable, no lights-off. */
+    if(document.fullscreenElement){ try{ document.exitFullscreen(); }catch(e){} }
+    document.body.classList.remove("cinema", "cinema-idle");
+    enterPip();
+    updateCinemaUI();
+    return;
+  }
+  if(cinemaMode === "full") enterFullscreen();
+  document.body.classList.add("cinema");
+  updateCinemaUI(); nudgeCinemaBar();
+}
+function cinemaOff(){
+  document.body.classList.remove("cinema", "cinema-idle");
+  if(document.fullscreenElement){ try{ document.exitFullscreen(); }catch(e){} }
+  if(pipWin && !pipWin.closed){ try{ pipWin.close(); }catch(e){} }
+  if(popWin && !popWin.closed){ try{ popWin.close(); }catch(e){} }
+  updateCinemaUI();
+}
+document.addEventListener("fullscreenchange", () => {
+  if(!document.fullscreenElement && cinemaMode === "full"){
+    cinemaMode = "tab"; try{ localStorage.setItem("urCinemaMode", "tab"); }catch(e){}
+    updateCinemaUI();
+  }
+});
+
+/* ---------- Library & books ---------- */
+function splitChapters(text){
+  const re = /^[ \t]*(chapter\s+[0-9ivxlc]+[^\n]*|第[0-9一二三四五六七八九十百千零]+[章节][^\n]*|prologue[^\n]*|epilogue[^\n]*)[ \t]*$/gim;
+  const matches = [...text.matchAll(re)];
+  if(!matches.length) return [{title:"Chapter 1", text:text.trim()}];
+  const chs = [];
+  if(matches[0].index > 0){ const pre = text.slice(0, matches[0].index).trim(); if(pre) chs.push({title:"Opening", text:pre}); }
+  matches.forEach((m, i) => {
+    const start = m.index + m[0].length;
+    const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+    chs.push({title:m[0].trim(), text:text.slice(start, end).trim()});
+  });
+  return chs.filter(c => c.text);
+}
+function addBook(title, chapters){
+  const book = {id:uid(), title, chapters, added:Date.now(), source:"library"};
+  library.unshift(book); saveLibrary();
+  return book;
+}
+/* ---------- Rename novels & chapters ---------- */
+let renameTarget = null, renameReturnToLibrary = false;
+function openRenameBook(bookId){
+  const book = library.find(b => b.id === bookId);
+  if(!book) return;
+  renameTarget = {kind:"book", bookId};
+  $("editModalTitle").textContent = "Rename novel";
+  $("editLabel").textContent = "Novel title";
+  $("editInput").value = book.title || "";
+  openRenameModal();
+}
+function openRenameChapter(bookId, chapterIdx){
+  const book = library.find(b => b.id === bookId);
+  if(!book) return;
+  const ch = book.chapters[chapterIdx];
+  if(!ch) return;
+  renameTarget = {kind:"chapter", bookId, chapterIdx};
+  $("editModalTitle").textContent = "Rename chapter";
+  $("editLabel").textContent = "Chapter name";
+  $("editInput").value = ch.title || "";
+  openRenameModal();
+}
+function openRenameModal(){
+  renameReturnToLibrary = !$("modalLibrary").hidden;
+  closeModals();
+  openModal("modalEdit");
+  setTimeout(() => {
+    const i = $("editInput");
+    i.focus(); i.select();
+  }, 80);
+}
+function closeRenameModal(){
+  renameTarget = null;
+  const back = renameReturnToLibrary;
+  renameReturnToLibrary = false;
+  closeModals();
+  if(back){ renderLibrary(); openModal("modalLibrary"); }
+}
+function saveRename(){
+  if(!renameTarget) return;
+  const val = $("editInput").value.replace(/\s+/g, " ").trim().slice(0, 200);
+  if(!val){ toast("Type a name first."); return; }
+  const book = library.find(b => b.id === renameTarget.bookId);
+  if(!book){ closeRenameModal(); return; }
+  const t = renameTarget; renameTarget = null;
+  if(t.kind === "book"){
+    book.title = val; book.customTitle = true;
+    if(S.book && S.book.id === book.id){
+      S.book.title = val;
+      $("docSub").textContent = val;
+    }
+  } else {
+    const ch = book.chapters[t.chapterIdx];
+    if(!ch){ closeRenameModal(); return; }
+    ch.title = val; ch.customTitle = true;
+    // Keep bookmarks pointing at the renamed chapter in sync.
+    let bmChanged = false;
+    bookmarks.forEach(bm => {
+      if(bm.bookId !== book.id) return;
+      if(bm.ch === t.chapterIdx || (bm.source === "web" && ch.url && sameUrl(bm.url, ch.url))){
+        bm.chTitle = val; bmChanged = true;
+      }
+    });
+    if(bmChanged) saveBookmarks();
+    if(S.book && S.book.id === book.id && t.chapterIdx === S.chapterIdx){
+      $("chapterHeading").textContent = val;
+      updateChapterBar();
+      renderChaptersList();
+    }
+  }
+  saveLibrary();
+  const back = renameReturnToLibrary;
+  renameReturnToLibrary = false;
+  closeModals();
+  if(back){ renderLibrary(); openModal("modalLibrary"); }
+  toast(`Renamed to “${val}”.`);
+}
+/* Only merge pages that share a chapter-style novel URL, e.g. /novel/x/chapter-12. */
+function webNovelKey(url){
+  try{
+    const u = new URL(url);
+    if(/(?:chapter|chap|ch)[-_\/]?\d+/i.test(u.pathname)){
+      const p = u.pathname.replace(/(?:\/)?(?:chapter|chap|ch)[-_\/]?\d+[^\/]*$/i, '/');
+      return u.origin + p;
+    }
+    // Numeric chapter pages such as /novel/name/12345
+    const parts = u.pathname.split('/').filter(Boolean);
+    const last = parts[parts.length - 1] || '';
+    const novelish = parts.slice(0, -1).some(p => /^(novel|novels|book|books|read|reading|story|stories|fiction|series)$/i.test(p));
+    if(novelish && parts.length >= 3 && /\d/.test(last)){
+      return u.origin + '/' + parts.slice(0, -1).join('/') + '/';
+    }
+  }catch(_){}
+  return url;
+}
+function sameUrl(a, b){
+  if(!a || !b) return false;
+  if(a === b) return true;
+  try{
+    const x = new URL(a, location.href), y = new URL(b, location.href);
+    return x.origin === y.origin
+      && x.pathname.replace(/\/+$/, "") === y.pathname.replace(/\/+$/, "")
+      && x.search === y.search;
+  }catch(_){ return false; }
+}
+function webChapterTitle(parsed, url){
+  const page = safeTitle(parsed.pageTitle || "");
+  let m = /(?:chapter|chap|ch\.?|episode|part|book|volume)\s*[\d.]+[^\n|]*/i.exec(page);
+  if(!m) m = /第\s*[\d一二三四五六七八九十百千零]+\s*[章节回卷][^\n|]*/.exec(page);
+  let t = m ? m[0] : "";
+  // Drop the site name that follows the chapter title.
+  t = t.replace(/\s*[|·•]\s*[^|·•]*$/, "").trim();
+  const tail = /^(.*?)\s+[-–—]\s+([^-–—]+)$/.exec(t);
+  const SITE_SUFFIX = /^(free\s*web\s*novel|web\s*novel|light\s*novel(?:\s*world)?|novel\s*bin|read\s*novel\w*|webnovel|wuxiaworld|wtr-lab|scribble\s*hub|royal\s*road|novelupdates)$/i;
+  if(tail && SITE_SUFFIX.test(tail[2].trim())) t = tail[1];
+  t = safeTitle(t.replace(/[\s\-–—:|]+$/, "").trim());
+  if(t) return t;
+  const n = /(?:chapter|chap|ch)[-_\/]?(\d+)/i.exec(url || "");
+  if(n) return "Chapter " + n[1];
+  return safeTitle(parsed.title || "Chapter");
+}
+function syncWebChapter(){
+  if(!S.book || S.book.source !== "web") return;
+  const ch = S.book.chapters && S.book.chapters[S.chapterIdx];
+  if(!ch) return;
+  if(ch.url) S.book.webUrl = ch.url;
+  if(ch.next != null) S.book.webNextUrl = ch.next;
+  if(ch.prev != null) S.book.webPrevUrl = ch.prev;
+}
+/* Keep every web chapter in one Library entry instead of replacing the page. */
+function persistWebBook(book, keepId){
+  let existing = keepId ? library.find(b => b.id === keepId) : library.find(b => b.id === book.id);
+  if(!existing && book.webUrl){
+    const key = webNovelKey(book.webUrl);
+    existing = library.find(b => b.source === "web" && b.webUrl && webNovelKey(b.webUrl) === key);
+  }
+  const chapter = Object.assign({}, (book.chapters && book.chapters[0]) || {});
+  chapter.title = chapter.title || book.title || "Chapter";
+  chapter.text = chapter.text || "";
+  chapter.url = book.webUrl || chapter.url || "";
+  chapter.next = book.webNextUrl || "";
+  chapter.prev = book.webPrevUrl || "";
+  if(!existing){
+    book.chapters = [chapter];
+    library.unshift(book); saveLibrary();
+    return {book, chapterIdx: 0};
+  }
+  // Older versions stored a single page per entry — give that page a URL too.
+  existing.chapters = existing.chapters || [];
+  if(existing.chapters.length && !existing.chapters.some(c => c.url)){
+    existing.chapters[0].url = existing.webUrl || "";
+    existing.chapters[0].next = existing.chapters[0].next || existing.webNextUrl || "";
+    existing.chapters[0].prev = existing.chapters[0].prev || existing.webPrevUrl || "";
+  }
+  let idx = existing.chapters.findIndex(c => sameUrl(c.url, chapter.url));
+  if(idx < 0 && chapter.url) idx = existing.chapters.findIndex(c => !c.url && c.title === chapter.title);
+  if(idx >= 0){
+    const old = existing.chapters[idx];
+    const merged = Object.assign({}, old, chapter, {url: chapter.url || old.url});
+    // Keep a name the reader edited by hand.
+    if(old.customTitle && old.title) merged.title = old.title;
+    existing.chapters[idx] = merged;
+  } else {
+    existing.chapters.push(chapter);
+    idx = existing.chapters.length - 1;
+  }
+  existing.webUrl = chapter.url || existing.webUrl;
+  existing.webNextUrl = chapter.next || "";
+  existing.webPrevUrl = chapter.prev || "";
+  if(!existing.title || /^(untitled|new tab)$/i.test(existing.title)) existing.title = book.title;
+  saveLibrary();
+  return {book: existing, chapterIdx: idx};
+}
+function openBook(id, opts = {}){
+  const book = library.find(b => b.id === id);
+  if(!book){ toast("That book is no longer in your library."); return; }
+  stopPlayback();
+  S.book = book; S.mode = "reader";
+  let prog = {};
+  try{ prog = JSON.parse(localStorage.getItem("upr.progress") || "{}")[id] || {}; }catch(e){}
+  if(opts.chapterIdx != null){
+    S.chapterIdx = clamp(opts.chapterIdx, 0, book.chapters.length - 1);
+  } else {
+    S.chapterIdx = opts.resume === false ? 0 : clamp(prog.ch || 0, 0, book.chapters.length - 1);
+  }
+  syncWebChapter();
+  buildPages();
+  S.pageIdx = opts.resume === false ? 0 : clamp(prog.page || 0, 0, S.pages.length - 1);
+  pos.u = 0;
+  try{ localStorage.setItem("upr.lastBook", id); }catch(e){}
+  $("docSub").textContent = book.title;
+  renderPage(); switchPane("reader");
+  if(opts.autoplay){ S.playing = true; updateTransport(); restartSpeech(); }
+}
+function loadChapter(i, opts = {}){
+  if(!S.book) return;
+  i = clamp(i, 0, S.book.chapters.length - 1);
+  const wasPlaying = opts.autoplay || (S.playing && !S.paused);
+  gen++; try{ speechSynthesis.cancel(); }catch(e){}
+  S.chapterIdx = i; syncWebChapter(); buildPages(); S.pageIdx = 0; pos.u = 0;
+  renderPage(); saveProgress();
+  $("readerCard").scrollIntoView({behavior:"smooth", block:"start"});
+  if(wasPlaying){ S.playing = true; S.paused = false; updateTransport(); restartSpeech(); }
+}
+const expandedNovelIds = new Set();
+
+function parseChapterOrder(title, originalIdx){
+  if(!title) return { num: originalIdx, title: '' };
+  // Check for chapter / ch / episode / part numbers
+  const m = /(?:chapter|chap|ch|episode|ep|section|part|book|vol|volume)[\\s\\-_.:#]*(\\d+(?:\\.\\d+)?)/i.exec(title);
+  if(m) return { num: parseFloat(m[1]), title };
+  const numOnly = /(\\d+(?:\\.\\d+)?)/.exec(title);
+  if(numOnly) return { num: parseFloat(numOnly[1]), title };
+  // Chinese numerals support
+  const cjk = /第([0-9一二三四五六七八九十百千零]+)[章节卷回]/.exec(title);
+  if(cjk) return { num: originalIdx, title };
+  return { num: originalIdx, title };
+}
+
+function getSortedChaptersAsc(chapters){
+  return (chapters || []).map((c, originalIndex) => {
+    const parsed = parseChapterOrder(c.title, originalIndex);
+    return {
+      chapter: c,
+      originalIndex,
+      sortNum: parsed.num,
+      title: c.title || ('Chapter ' + (originalIndex + 1))
+    };
+  }).sort((a, b) => {
+    if(a.sortNum !== b.sortNum) return a.sortNum - b.sortNum;
+    return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
+
+function renderLibrary(){
+  const q = ($("libSearch").value || "").trim().toLowerCase();
+  const sort = $("libSort").value || "titleAsc";
+
+  // Filter novels by title or chapter contents
+  let items = library.filter(b => {
+    if(b.title.toLowerCase().includes(q)) return true;
+    if(q && b.chapters && b.chapters.some(c => (c.title || "").toLowerCase().includes(q))) return true;
+    return false;
+  });
+
+  // Sort novels/books in ascending order by title by default, or user preference
+  items = items.slice().sort((a, b) => {
+    if(sort === "titleAsc") return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
+    if(sort === "titleDesc") return b.title.localeCompare(a.title, undefined, { numeric: true, sensitivity: 'base' });
+    if(sort === "chaptersAsc") return a.chapters.length - b.chapters.length;
+    if(sort === "chaptersDesc") return b.chapters.length - a.chapters.length;
+    return b.added - a.added; // recent
+  });
+
+  if(!items.length){
+    $("libraryList").innerHTML = '<p class="hint" style="padding:14px 0">No novels or books found in library. Import a file (.epub, .pdf, .txt), paste text, or read a web chapter.</p>';
+    return;
+  }
+
+  // Render hierarchical directory tree structure
+  $("libraryList").innerHTML = `<div class="tree-container">
+    ${items.map(book => {
+      const isCurrent = S.book && S.book.id === book.id;
+      // If searching, keep tree auto-expanded so user sees matching chapters
+      const isOpen = expandedNovelIds.has(book.id) || (q.length > 0) || isCurrent;
+      const sortedChapters = getSortedChaptersAsc(book.chapters);
+      const pct = savedBookPct(book);
+
+      return `<div class="tree-node ${isOpen ? 'is-open' : ''}" data-tree-book="${book.id}">
+        <div class="tree-header" data-toggle-tree="${book.id}">
+          <span class="tree-expander" title="Toggle chapters tree">▶</span>
+          <span class="tree-folder-icon">${isOpen ? '📂' : '📁'}</span>
+          <div class="tree-info">
+            <div class="tree-title">
+              <span>${esc(book.title)}</span>
+              ${isCurrent ? '<span class="badge">OPEN</span>' : ''}
+            </div>
+            <div class="tree-meta">
+              <span>${book.chapters.length} chapter${book.chapters.length > 1 ? 's' : ''} (Ascending 1 → ${book.chapters.length})</span> ·
+              <span>${new Date(book.added).toLocaleDateString()}</span>
+            </div>
+            <div class="book-prog">
+              <div class="mini-track"><div class="mini-fill" style="width:${pct}%"></div></div>
+              <span>${pct}% read</span>
+            </div>
+          </div>
+          <div class="tree-actions">
+            <button class="btn small" data-rename-book="${esc(book.id)}" title="Rename novel">✎</button>
+            <button class="btn small primary" data-open-book="${book.id}" title="Read novel from current/first chapter">Read</button>
+            <button class="btn small danger" data-del-book="${book.id}" title="Delete novel">×</button>
+          </div>
+        </div>
+
+        ${isOpen ? `<div class="tree-branch" role="tree">
+          ${sortedChapters.map((item, treeIdx) => {
+            const isChActive = isCurrent && S.chapterIdx === item.originalIndex;
+            const wCount = countWords(item.chapter.text || '');
+            const cp = savedChapterPct(book, item.originalIndex);
+            return `<div class="tree-leaf ${isChActive ? 'active' : ''}" data-open-chapter="${book.id}" data-ch-idx="${item.originalIndex}" title="Open ${esc(item.title)}">
+              <span class="tree-leaf-icon">${isChActive ? '📖' : (cp >= 100 ? '✅' : '📄')}</span>
+              <span class="tree-leaf-num">#${treeIdx + 1}</span>
+              <span class="tree-leaf-title">${esc(item.title)}</span>
+              <span class="tree-leaf-words">${wCount} words${cp ? ' · ' + cp + '%' : ''}</span>
+              <button class="tree-leaf-edit" data-rename-chapter="${esc(book.id)}" data-ch-idx="${item.originalIndex}" title="Rename chapter">✎</button>
+            </div>`;
+          }).join('')}
+        </div>` : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+function renderBookmarks(){
+  $("bookmarksList").innerHTML = bookmarks.map(b =>
+    `<div class="list-item" data-id="${b.id}">
+      <div class="li-main"><b>“${esc(b.excerpt)}…”</b><span>${esc(b.bookTitle)} · ${esc(b.chTitle)} · p.${b.page + 1}</span></div>
+      <button class="btn small primary" data-go>Go</button>
+      <button class="btn small danger" data-del title="Delete">×</button>
+    </div>`).join("") || '<p class="hint">No bookmarks yet. Tap 🔖 while reading to save your place.</p>';
+}
+function addBookmark(){
+  if(!S.book || !currentUnit()){ toast("Nothing to bookmark yet."); return; }
+  const u = currentUnit();
+  const bm = {
+    id:uid(), bookId:S.book.id, bookTitle:S.book.title, source:S.book.source,
+    url:S.book.source === "web" ? S.book.webUrl : null,
+    ch:S.chapterIdx, chTitle:S.book.chapters[S.chapterIdx].title,
+    page:S.pageIdx, u:pos.u, excerpt:u.text.trim().slice(0, 70), ts:Date.now()
+  };
+  bookmarks.unshift(bm); saveBookmarks();
+  toast("Bookmark added.");
+}
+async function goBookmark(b){
+  closeModals();
+  if(b.source === "web" && b.url){
+    const bk = library.find(x => x.id === b.bookId);
+    const idx = bk ? bk.chapters.findIndex(c => sameUrl(c.url, b.url)) : -1;
+    if(idx >= 0){
+      openBook(b.bookId, {chapterIdx: idx, resume: false});
+    } else {
+      await loadWebBook(b.url, {keepId: b.bookId});
+    }
+    if(S.book && sameUrl(S.book.webUrl, b.url)){
+      S.pageIdx = clamp(b.page, 0, S.pages.length - 1); pos.u = b.u || 0;
+      renderPage(); const u = currentUnit(); if(u) highlightUnit(u, u.start);
+      $("readerCard").scrollIntoView({behavior:"smooth"});
+    }
+  } else {
+    openBook(b.bookId, {resume:false});
+    if(S.book && S.book.id === b.bookId){
+      S.chapterIdx = clamp(b.ch, 0, S.book.chapters.length - 1);
+      buildPages(); S.pageIdx = clamp(b.page, 0, S.pages.length - 1); pos.u = b.u || 0;
+      renderPage(); const u = currentUnit(); if(u) highlightUnit(u, u.start);
+      $("readerCard").scrollIntoView({behavior:"smooth"});
+    }
+  }
+}
+
+/* ---------- File import ---------- */
+async function importFiles(files){
+  const list = [...files];
+  const total = list.length || 1;
+  for(let n = 0; n < list.length; n++){
+    const f = list[n];
+    const base = (n / total) * 100, span = 100 / total;
+    const step = (pct, label) => progressSet(base + span * clamp(pct, 0, 100) / 100, label);
+    const token = progressShow(total > 1 ? `Importing “${f.name}” (${n + 1}/${total})…` : `Importing “${f.name}”…`, base + span * 0.05);
+    try{
+      const name = f.name.replace(/\.[^.]+$/, "");
+      let chapters;
+      if(/\.pdf$/i.test(f.name)){
+        if(!window.pdfjsLib) throw new Error("PDF support requires the pdf.js library (CDN)");
+        step(8, "Reading PDF…");
+        const pdf = await pdfjsLib.getDocument({data: new Uint8Array(await f.arrayBuffer())}).promise;
+        const pages = [];
+        for(let i = 1; i <= pdf.numPages; i++){
+          const label = `Reading PDF page ${i} of ${pdf.numPages}…`;
+          setStatus(label); step(8 + (i / pdf.numPages) * 78, label);
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          pages.push(content.items.map(item => item.str).join(" "));
+        }
+        step(88, "Splitting chapters…");
+        chapters = splitChapters(pages.join("\n\n"));
+      } else if(/\.epub$/i.test(f.name)){
+        step(8, "Unpacking EPUB…");
+        chapters = await readEpub(await f.arrayBuffer(), (done, all) =>
+          step(8 + (done / Math.max(1, all)) * 80, `Reading EPUB section ${done} of ${all}…`));
+      } else {
+        step(20, "Reading file…");
+        const text = await f.text();
+        step(55, "Finding chapters…");
+        if(/\.html?$/i.test(f.name)){
+          const doc = new DOMParser().parseFromString(text, "text/html");
+          doc.querySelectorAll("script,style,noscript,svg").forEach(el => el.remove());
+          chapters = splitChapters((doc.body.innerText || doc.body.textContent || "").trim());
+        } else chapters = splitChapters(text);
+      }
+      if(!chapters.length) throw new Error("No text found");
+      step(94, "Saving to Library…");
+      const book = addBook(name, chapters);
+      openBook(book.id, {resume:false});
+      progressEnd(`Imported “${name}”`, token);
+      setStatus("Ready");
+      toast(`Imported “${name}” — ${chapters.length} chapter${chapters.length > 1 ? "s" : ""}.`);
+    }catch(e){
+      progressAbort(token);
+      setStatus("Ready");
+      toast(`Could not import ${f.name}: ${e.message}`);
+    }
+  }
+}
+async function readEpub(buf, onProgress){
+  if(!("DecompressionStream" in window)) throw new Error("EPUB needs a newer Chrome or Edge");
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for(let i = u8.length - 22; i >= Math.max(0, u8.length - 65558); i--){
+    if(dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
+  }
+  if(eocd < 0) throw new Error("Not a valid EPUB");
+  const count = dv.getUint16(eocd + 10, true);
+  let off = dv.getUint32(eocd + 16, true);
+  const dec = new TextDecoder();
+  const entries = {};
+  for(let n = 0; n < count; n++){
+    if(dv.getUint32(off, true) !== 0x02014b50) break;
+    const method = dv.getUint16(off + 10, true);
+    const csize = dv.getUint32(off + 20, true);
+    const nlen = dv.getUint16(off + 28, true), elen = dv.getUint16(off + 30, true), clen = dv.getUint16(off + 32, true);
+    const lho = dv.getUint32(off + 42, true);
+    const name = dec.decode(u8.slice(off + 46, off + 46 + nlen));
+    entries[name] = {method, csize, lho};
+    off += 46 + nlen + elen + clen;
+  }
+  const readEntry = async name => {
+    const e = entries[name]; if(!e) throw new Error("Missing " + name);
+    const nlen = dv.getUint16(e.lho + 26, true), elen = dv.getUint16(e.lho + 28, true);
+    const start = e.lho + 30 + nlen + elen;
+    const data = u8.slice(start, start + e.csize);
+    if(e.method === 0) return dec.decode(data);
+    const ds = new DecompressionStream("deflate-raw");
+    const stream = new Blob([data]).stream().pipeThrough(ds);
+    return await new Response(stream).text();
+  };
+  const container = new DOMParser().parseFromString(await readEntry("META-INF/container.xml"), "text/xml");
+  const opfPath = container.querySelector("rootfile").getAttribute("full-path");
+  const opfDir = opfPath.includes("/") ? opfPath.slice(0, opfPath.lastIndexOf("/") + 1) : "";
+  const opf = new DOMParser().parseFromString(await readEntry(opfPath), "text/xml");
+  const manifest = {};
+  opf.querySelectorAll("manifest item").forEach(it => manifest[it.getAttribute("id")] = it.getAttribute("href"));
+  const spine = [...opf.querySelectorAll("spine itemref")].map(ir => manifest[ir.getAttribute("idref")]).filter(Boolean);
+  const chapters = [];
+  for(let si = 0; si < spine.length; si++){
+    try{
+      const href = spine[si];
+      const path = opfDir + href.split("#")[0];
+      const html = await readEntry(path);
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      doc.querySelectorAll("script,style,nav,svg").forEach(el => el.remove());
+      const paras = (doc.body.innerText || doc.body.textContent || "").split(/\n+/).map(t => t.trim()).filter(Boolean);
+      if(paras.join(" ").trim().length > 40){
+        const h = doc.querySelector("h1,h2,h3");
+        chapters.push({title:h ? h.textContent.trim().slice(0, 90) : `Section ${chapters.length + 1}`, text:paras.join("\n\n")});
+      }
+    }catch(e){}
+    if(onProgress) onProgress(si + 1, spine.length);
+  }
+  if(!chapters.length) throw new Error("No readable sections");
+  return chapters;
+}
+
+/* ================================================================
+   MINI BROWSER (tabs + reader/live view + multi-source extraction)
+   ================================================================ */
+const miniBrowser = { tabs: [], activeId: 0, seq: 0 };
+const MAX_TABS = 8;
+const SPEED_DIAL_LINKS = [
+  ['📚','FreeWebNovel','https://freewebnovel.com'],
+  ['🐉','Wuxiaworld','https://www.wuxiaworld.com'],
+  ['🌐','WTR-Lab','https://wtr-lab.com/en'],
+  ['▶️','YouTube','youtube'],
+  ['📖','Wikipedia','https://en.wikipedia.org'],
+  ['🔎','Search','search']
+];
+function activeTab(){ return miniBrowser.tabs.find(t => t.id === miniBrowser.activeId) || null; }
+function newTab(){
+  if(miniBrowser.tabs.length >= MAX_TABS){ webMsg('Close a tab first (max ' + MAX_TABS + ').'); return activeTab(); }
+  const tab = {
+    id: ++miniBrowser.seq, url: '', title: 'New tab', mode: 'start',
+    frame: null, history: [], hi: -1, loading: false, loadToken: 0, ytSrc: '',
+    web: { url: '', parsed: null, next: '', prev: '', loginUrl: '' }
+  };
+  miniBrowser.tabs.push(tab);
+  activateTab(tab.id);
+  return tab;
+}
+function closeTab(id){
+  const i = miniBrowser.tabs.findIndex(t => t.id === id);
+  if(i < 0) return;
+  const [tab] = miniBrowser.tabs.splice(i, 1);
+  if(tab.frame) tab.frame.remove();
+  if(!miniBrowser.tabs.length){ newTab(); return; }
+  if(miniBrowser.activeId === id) activateTab(miniBrowser.tabs[Math.max(0, i - 1)].id);
+  else renderTabStrip();
+}
+function activateTab(id){
+  miniBrowser.activeId = id;
+  const tab = activeTab();
+  if(!tab) return;
+  miniBrowser.tabs.forEach(t => {
+    if(!t.frame) return;
+    const show = t === tab && t.mode !== 'start';
+    t.frame.style.display = show ? 'block' : 'none';
+    if(t.mode === 'youtube'){
+      if(!show && t.frame.getAttribute('src') !== 'about:blank') t.frame.src = 'about:blank';
+      if(show && t.frame.getAttribute('src') === 'about:blank' && t.ytSrc) t.frame.src = t.ytSrc;
+    }
+  });
+  $('browserStart').style.display = tab.mode === 'start' ? 'block' : 'none';
+  $('urlInput').value = tab.url || '';
+  $('webAutoContinue').checked = S.settings.webAutoContinue;
+  refreshWebToolbar();
+  renderTabStrip();
+}
+function renderTabStrip(){
+  const strip = $('tabStrip');
+  strip.replaceChildren();
+  miniBrowser.tabs.forEach(tab => {
+    const holder = document.createElement('div');
+    holder.className = 'tab' + (tab.id === miniBrowser.activeId ? ' active' : '');
+    const label = document.createElement('button');
+    label.style.cssText = 'background:none;border:0;color:inherit;font:inherit;cursor:pointer;padding:0;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    label.textContent = (tab.loading ? '⏳ ' : tab.mode === 'youtube' ? '▶ ' : tab.mode === 'live' ? '● ' : '') + (tab.title || 'New tab');
+    label.addEventListener('click', () => activateTab(tab.id));
+    const close = document.createElement('button');
+    close.className = 'tab-close'; close.textContent = '×'; close.setAttribute('aria-label', 'Close tab');
+    close.addEventListener('click', e => { e.stopPropagation(); closeTab(tab.id); });
+    holder.append(label, close);
+    strip.appendChild(holder);
+  });
+  const add = document.createElement('button');
+  add.className = 'tab-add'; add.textContent = '+'; add.setAttribute('aria-label', 'New tab');
+  add.addEventListener('click', () => { newTab(); $('urlInput').focus(); });
+  strip.appendChild(add);
+}
+function refreshWebToolbar(){
+  const tab = activeTab();
+  if(!tab) return;
+  const set = (id, enabled) => { const b = $(id); b.disabled = !enabled; b.style.opacity = enabled ? '1' : '.4'; };
+  set('btnWebBack', tab.hi > 0);
+  set('btnWebFwd', tab.hi < tab.history.length - 1);
+  set('btnWebReload', !!tab.url);
+  set('btnWebMode', tab.mode === 'reader' || tab.mode === 'live');
+  set('btnReadPage', !!tab.url && tab.mode !== 'youtube');
+  set('btnWebPrev', !!tab.url && !!tab.web.prev);
+  set('btnWebNext', !!tab.url && !!tab.web.next);
+  set('btnWebExternal', !!tab.url);
+  $('btnWebMode').textContent = tab.mode === 'live' ? '● Live' : tab.mode === 'youtube' ? '▶ Video' : '📖 Reader view';
+}
+function makeFrame(tab, kind){
+  if(tab.frame) tab.frame.remove();
+  const f = document.createElement('iframe');
+  f.title = 'Tab ' + tab.id;
+  f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;display:' + (tab.id === miniBrowser.activeId ? 'block' : 'none');
+  if(kind === 'reader'){
+    f.setAttribute('sandbox', 'allow-same-origin');
+    f.referrerPolicy = 'no-referrer';
+  } else {
+    f.setAttribute('sandbox', kind === 'youtube'
+      ? 'allow-scripts allow-same-origin allow-presentation allow-popups'
+      : 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-presentation allow-downloads');
+    f.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen';
+    f.allowFullscreen = true;
+    f.referrerPolicy = 'strict-origin-when-cross-origin';
+  }
+  $('browserStage').appendChild(f);
+  tab.frame = f;
+  return f;
+}
+function webMsg(m){ $('webMessage').textContent = m; }
+function webMsgLink(text, linkText, url){
+  const p = $('webMessage');
+  p.textContent = text + ' ';
+  const a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  a.textContent = linkText; a.style.color = 'var(--amber)'; a.style.textDecoration = 'underline';
+  p.appendChild(a);
+}
+
+/* Web helpers */
+function normalizeUrl(raw){
+  let u = (raw || '').trim();
+  if(!u) return '';
+  if(!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  try { return new URL(u).href; } catch(_){ return ''; }
+}
+function absUrl(href, base){
+  try{
+    if(!href || /^\s*(javascript:|#|mailto:)/i.test(href)) return '';
+    const u = new URL(href, base);
+    return /^https?:$/.test(u.protocol) ? u.href : '';
+  }catch(_){ return ''; }
+}
+function looksLikeUrl(s){
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^(localhost|[^\s\/]+\.[a-z]{2,})(:\d+)?([\/?#]\S*)?$/i.test(s);
+}
+function youtubeEmbedUrl(u){
+  let x; try { x = new URL(u); } catch(_){ return null; }
+  const host = x.hostname.replace(/^(www\.|m\.|music\.)/, '');
+  let id = '';
+  if(host === 'youtu.be') id = x.pathname.slice(1).split('/')[0];
+  else if(host === 'youtube.com' || host === 'youtube-nocookie.com'){
+    if(x.pathname === '/watch') id = x.searchParams.get('v') || '';
+    else { const m = /^\/(shorts|embed|live|v)\/([\w-]{6,})/.exec(x.pathname); if(m && m[2] !== 'videoseries') id = m[2]; }
+  } else return null;
+  const list = x.searchParams.get('list') || '';
+  if(!id && !list) return { embed: '' };
+  let q = '?rel=0&playsinline=1';
+  const tRaw = x.searchParams.get('t') || x.searchParams.get('start') || '';
+  let start = 0;
+  const tm = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/i.exec(tRaw);
+  if(tm) start = (+tm[1] || 0) * 3600 + (+tm[2] || 0) * 60 + (+tm[3] || 0);
+  if(start) q += '&start=' + start;
+  if(list) q += '&list=' + encodeURIComponent(list);
+  return { embed: 'https://www.youtube-nocookie.com/embed/' + (id || 'videoseries') + q };
+}
+
+/* ---- Page extraction ---- */
+const SITE_SELECTORS = {
+  'freewebnovel.com': ['#article', 'div.txt', '.txt'],
+  'wuxiaworld.com':   ['#chapter-content', '.chapter-content', '[class*="chapter-content"]'],
+  'wtr-lab.com':      ['.chapter-body', '.chapter_body', '[class*="chapter-body"]', '[class*="chapter_body"]', '#chapter-content'],
+};
+const GENERIC_SELECTORS = [
+  '#chapter-content','.chapter-content','#chr-content','.chr-c','#chapter-body','.chapter-body',
+  '.reading-content','.read-content','.novel-content','.entry-content','.post-content',
+  '[itemprop="articleBody"]','#article','.txt','article','#content','.text-left','main'
+];
+const JUNK_SELECTOR = [
+  'script','style','noscript','template','iframe','svg','canvas','form','button','select','input','textarea',
+  'nav','footer','aside','[hidden]','[aria-hidden="true"]','[style*="display:none"]','[style*="display: none"]',
+  '.ads','.ad','.adsbygoogle','[class*="advert"]','[id*="advert"]','[class*="google"]',
+  '[class*="comment"]','[id*="comment"]','[class*="share"]','[class*="social"]','[class*="breadcrumb"]',
+  '[class*="sidebar"]','[class*="related"]','[class*="popup"]','[class*="modal"]','[class*="cookie"]'
+].join(',');
+const JUNK_LINE = /^(advertisement|ads?|sponsored|loading\.*|report( chapter| error)?|bookmark|share|tap to (continue|read)|click (here|to).*|prev(ious)?( chapter)?|next( chapter)?|table of contents|comments?|leave a comment|\d+ comments?|support us|join (our )?discord|(please )?(visit|read at|find (more|the latest)|read (latest|more)).*(\.com|\.net|\.org|\.io|\.me).*)$/i;
+
+function textLen(el){ return (el.textContent || '').replace(/\s+/g, ' ').trim().length; }
+function pickContentNode(doc, host){
+  const sels = [...(SITE_SELECTORS[host] || []), ...GENERIC_SELECTORS];
+  for(const sel of sels){
+    let best = null, bestLen = 0;
+    try{
+      doc.querySelectorAll(sel).forEach(el => { const l = textLen(el); if(l > bestLen){ best = el; bestLen = l; } });
+    }catch(_){}
+    if(best && bestLen >= 250) return best;
+  }
+  let best = null, bestScore = 0;
+  doc.querySelectorAll('div,section,article,main,td').forEach(el => {
+    let score = 0;
+    for(const c of el.children) if(c.tagName === 'P') score += (c.textContent || '').trim().length;
+    const brs = Array.from(el.children).filter(c => c.tagName === 'BR').length;
+    if(brs >= 5) for(const n of el.childNodes) if(n.nodeType === 3) score += n.textContent.trim().length;
+    if(score > bestScore){ best = el; bestScore = score; }
+  });
+  return (best && bestScore >= 200) ? best : doc.body;
+}
+function nodeToText(node){
+  const c = node.cloneNode(true);
+  c.querySelectorAll('p,div,ul,ol,li').forEach(el => {
+    const t = textLen(el);
+    if(!t || t > 220) return;
+    let linkT = 0; el.querySelectorAll('a').forEach(a => linkT += textLen(a));
+    if(linkT / t > 0.6) el.remove();
+  });
+  c.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+  c.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6,li,blockquote,section,tr').forEach(el => el.append('\n\n'));
+  return (c.textContent || '');
+}
+function cleanLines(text, host){
+  const hostRe = host ? new RegExp(host.replace(/\./g, '\\.'), 'i') : null;
+  const out = [];
+  for(let raw of text.replace(/\r/g, '').replace(/\u00a0/g, ' ').split('\n')){
+    const line = raw.replace(/[ \t]+/g, ' ').trim();
+    if(!line){ if(out.length && out[out.length - 1] !== '') out.push(''); continue; }
+    if(JUNK_LINE.test(line)) continue;
+    if(hostRe && line.length < 140 && hostRe.test(line)) continue;
+    out.push(line);
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+function chapterNumber(s){
+  const m = /(?:chapter|chap|ch)[\s\-_.\/]*(\d+)/i.exec(s) || /(\d+)(?!.*\d)/.exec(s);
+  return m ? parseInt(m[1], 10) : NaN;
+}
+function guessSiblingChapter(url, dir){
+  try{
+    const u = new URL(url);
+    const re = /((?:chapter|chap|ch)[-_\/]?)(\d+)/i;
+    let p = u.pathname;
+    if(re.test(p)) p = p.replace(re, (_, a, n) => a + Math.max(1, parseInt(n, 10) + dir));
+    else if(/(\d+)(?!.*\d)/.test(p)) p = p.replace(/(\d+)(?!.*\d)/, (n) => Math.max(1, parseInt(n, 10) + dir));
+    else return '';
+    u.pathname = p;
+    return u.href === url ? '' : u.href;
+  }catch(_){ return ''; }
+}
+function findChapterNav(doc, base){
+  const cur = base.split('#')[0];
+  const anchors = Array.from(doc.querySelectorAll('a[href]'));
+  const find = (rel, idRe, txtRe) => {
+    const relEl = doc.querySelector(`a[rel~="${rel}"][href]`);
+    let u = relEl && absUrl(relEl.getAttribute('href'), base);
+    if(u && u !== cur) return u;
+    let a = anchors.find(x => idRe.test(`${x.id || ''} ${x.className || ''}`) && absUrl(x.getAttribute('href'), base) !== cur && absUrl(x.getAttribute('href'), base));
+    if(a) return absUrl(a.getAttribute('href'), base);
+    a = anchors.find(x => {
+      const t = `${(x.textContent || '').trim()} ${x.getAttribute('aria-label') || ''} ${x.title || ''}`.trim();
+      const h = absUrl(x.getAttribute('href'), base);
+      return h && h !== cur && t.length < 50 && txtRe.test(t);
+    });
+    return a ? absUrl(a.getAttribute('href'), base) : '';
+  };
+  return {
+    next: find('next', /next[-_ ]?(chap|url|ch|btn|page)|\bnext\b/i, /\bnext\b|^[\s›»→>]+$/i),
+    prev: find('prev', /prev[-_ ]?(chap|url|ch|btn|page)|\bprev(ious)?\b/i, /\bprev(ious)?\b|^[\s‹«←<]+$/i)
+  };
+}
+function collectChapterLinks(doc, base){
+  const seen = new Set(), list = [];
+  doc.querySelectorAll('a[href]').forEach(a => {
+    const u = absUrl(a.getAttribute('href'), base);
+    if(!u || seen.has(u)) return;
+    const t = (a.textContent || '').trim();
+    if(/chapter[-_\/]?\d+|\/ch[-_]?\d+/i.test(u) || /^(chapter|ch\.?)\s*\d+/i.test(t)){
+      seen.add(u);
+      list.push({ url: u, n: chapterNumber(t) || chapterNumber(u) });
+    }
+  });
+  return list;
+}
+function safeTitle(t){ return (t || '').replace(/[<>"&]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90); }
+const LOGIN_RE = /(^|[\/_-])(log-?in|sign-?in|signin|sign-?up|register|auth)([\/_.-]|$)/i;
+
+function parseWebHtml(html, baseUrl){
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const host = new URL(baseUrl).hostname.replace(/^www\./, '');
+  const nav = findChapterNav(doc, baseUrl);
+  const chapterLinks = collectChapterLinks(doc, baseUrl);
+  const pageTitle = (doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || doc.title || '').trim();
+  const loginEl = Array.from(doc.querySelectorAll('a[href]')).find(a =>
+    /^(log ?in|sign ?in|login)$/i.test((a.textContent || '').trim()) || LOGIN_RE.test(a.getAttribute('href') || ''));
+  const loginUrl = loginEl ? absUrl(loginEl.getAttribute('href'), baseUrl) : '';
+  doc.querySelectorAll(JUNK_SELECTOR).forEach(n => n.remove());
+  doc.querySelectorAll('header').forEach(h => { if(!h.closest('article,main,[id*="chapter"],[class*="chapter"]')) h.remove(); });
+  const node = pickContentNode(doc, host);
+  const h = node.querySelector('h1,h2,h3') || doc.querySelector('h1');
+  let title = safeTitle((h && h.textContent) || pageTitle) || host;
+  let text = cleanLines(nodeToText(node), host);
+  if(text && !text.slice(0, 200).toLowerCase().includes(title.toLowerCase().slice(0, 30))) text = title + '\n\n' + text;
+  return { title, pageTitle, text, next: nav.next, prev: nav.prev, chapterLinks, loginUrl };
+}
+/* Fallback when a reader service returns Markdown instead of HTML. */
+function parseMarkdownPage(md, baseUrl){
+  const host = new URL(baseUrl).hostname.replace(/^www\./, '');
+  const title = safeTitle((md.match(/^Title:\s*(.+)$/mi) || [])[1] || host) || host;
+  let body = md.split(/Markdown Content:\s*/i).pop() || md;
+  body = body
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/[*_`~]{1,3}/g, '');
+  let text = cleanLines(body.replace(/\r/g, ''), host);
+  if(text && !text.slice(0, 200).toLowerCase().includes(title.toLowerCase().slice(0, 30))) text = title + '\n\n' + text;
+  return { title, pageTitle: title, text, next: '', prev: '', chapterLinks: [], loginUrl: '' };
+}
+
+/* Multi-source fetch with racing (first good answer wins) */
+const WEB_SOURCES = [
+  { name: 'direct', build: u => u, timeout: 9000 },
+  // Jina Reader renders the page server-side and is the most reliable fallback.
+  { name: 'rendered page', build: u => 'https://r.jina.ai/' + u, headers: { 'X-Return-Format': 'html' }, timeout: 35000 },
+  { name: 'proxy 1', build: u => 'https://cors-get-proxy.sirjosh.workers.dev/?url=' + encodeURIComponent(u), timeout: 16000, delay: 500 },
+  { name: 'proxy 2', build: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), timeout: 16000, delay: 800 },
+  { name: 'proxy 3', build: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), timeout: 16000, delay: 1100 },
+  { name: 'proxy 4', build: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 12000, delay: 1400 },
+  { name: 'proxy 5', build: u => 'https://cors.isomorphic-git.org/' + u, timeout: 16000, delay: 1700 },
+  { name: 'proxy 6', build: u => 'https://test.cors.workers.dev/?' + u, timeout: 16000, delay: 2000 }
+];
+const webCache = new Map();
+function cachePage(url, value){
+  webCache.set(url, value);
+  if(webCache.size > 8) webCache.delete(webCache.keys().next().value);
+}
+function fetchPageHtml(url, say, { strict = true } = {}){
+  if(webCache.has(url)) return Promise.resolve(webCache.get(url));
+  if(say) say('Fetching page…');
+  let host = 'website';
+  try{ host = new URL(url).hostname.replace(/^www\./, ''); }catch(_){}
+  const token = progressShow(`Downloading from ${host}…`, 5);
+  const controllers = [];
+  let finished = false, started = 0;
+  const totalSources = WEB_SOURCES.length;
+  const attempt = async src => {
+    const ctl = new AbortController(); controllers.push(ctl);
+    const timer = setTimeout(() => ctl.abort(), src.timeout || 16000);
+    try{
+      const res = await fetch(src.build(url), { ...(src.headers ? { headers: src.headers } : {}), signal: ctl.signal });
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const body = await res.text();
+      let parsed;
+      if(/<(html|body|p|div)[\s>]/i.test(body)) parsed = parseWebHtml(body, url);
+      else if(/Markdown Content:/i.test(body)) parsed = parseMarkdownPage(body, url);
+      else throw new Error('not a web page');
+      const blocked = /just a moment|cf-browser-verification|enable javascript and cookies|attention required/i.test(body.slice(0, 4000));
+      if(blocked && parsed.text.length < 600) throw new Error('blocked by bot protection');
+      if(strict){ if(parsed.text.length < 200 && parsed.chapterLinks.length < 5) throw new Error('no readable text'); }
+      else if(body.length < 1500) throw new Error('page too small');
+      return { html: body, parsed, via: src.name };
+    }catch(e){
+      throw new Error(`${src.name}: ${e.name === 'AbortError' ? 'timed out' : (e.message || 'failed')}`);
+    }finally{ clearTimeout(timer); }
+  };
+  const runs = WEB_SOURCES.map(src =>
+    new Promise(r => setTimeout(r, src.delay || 0))
+      .then(() => {
+        if(finished) throw new Error(src.name + ': skipped');
+        started++;
+        progressSet(5 + Math.round(started / totalSources * 62),
+          `Downloading from ${host}… (source ${started}/${totalSources})`);
+        return attempt(src);
+      })
+  );
+  return Promise.any(runs).then(result => {
+    finished = true;
+    controllers.forEach(c => { try{ c.abort(); }catch(_){} });
+    cachePage(url, result);
+    progressSet(96, 'Extracting readable text…');
+    progressEnd('Page downloaded', token);
+    return result;
+  }, agg => {
+    finished = true;
+    progressAbort(token);
+    const msgs = (agg.errors || []).map(e => e.message).filter(m => !/skipped/.test(m));
+    throw new Error(msgs.join('; ') || 'all sources failed');
+  });
+}
+
+/* Render the original HTML for Reader view (no scripts; links routed through app) */
+function renderOriginal(tab, html, url){
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script,iframe,object,embed,noscript,meta[http-equiv],base,link[rel~="preload"]').forEach(n => n.remove());
+  doc.querySelectorAll('*').forEach(el => { for(const a of Array.from(el.attributes)) if(/^on/i.test(a.name)) el.removeAttribute(a.name); });
+  doc.querySelectorAll('img').forEach(img => {
+    const lazy = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || img.getAttribute('data-original');
+    if(lazy) img.setAttribute('src', lazy);
+    img.setAttribute('loading', 'lazy');
+    img.setAttribute('decoding', 'async');
+  });
+  const head = doc.head || doc.documentElement.insertBefore(doc.createElement('head'), doc.body);
+  const base = doc.createElement('base'); base.href = url; head.prepend(base);
+  const ref = doc.createElement('meta'); ref.name = 'referrer'; ref.content = 'no-referrer'; head.prepend(ref);
+  const frame = makeFrame(tab, 'reader');
+  frame.onload = () => {
+    try{
+      const d = frame.contentDocument;
+      d.addEventListener('click', e => {
+        const a = e.target.closest && e.target.closest('a[href]');
+        if(!a) return;
+        const h = a.getAttribute('href') || '';
+        if(h.startsWith('#') || /^(javascript|mailto|tel):/i.test(h)) return;
+        e.preventDefault();
+        const u = absUrl(h, url);
+        if(!u) return;
+        if(LOGIN_RE.test(new URL(u).pathname)){ openSignInWindow(u); return; }
+        navigate(tab, u);
+      });
+      d.addEventListener('submit', e => {
+        e.preventDefault();
+        const form = e.target;
+        if((form.method || 'get').toLowerCase() === 'get'){
+          const target = new URL(absUrl(form.getAttribute('action') || url, url) || url);
+          new FormData(form).forEach((v, k) => { if(typeof v === 'string') target.searchParams.set(k, v); });
+          navigate(tab, target.href);
+        } else {
+          webMsg('This form can’t be sent from Reader view. For signing in, use 👤 Sign in.');
+        }
+      }, true);
+    }catch(_){}
+  };
+  frame.srcdoc = '<!DOCTYPE html>' + doc.documentElement.outerHTML;
+}
+
+async function navigate(tab, input, opts = {}){
+  input = (input || '').trim();
+  if(!tab || !input) return false;
+  let url, mode = opts.mode;
+  if(looksLikeUrl(input)){
+    url = normalizeUrl(input);
+    if(!url){ webMsg('Invalid address.'); return false; }
+  } else {
+    url = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(input);
+    mode = 'reader';
+  }
+  const host = new URL(url).hostname.replace(/^www\./, '');
+  const yt = youtubeEmbedUrl(url);
+  if(yt && !yt.embed){ webMsg('YouTube home/search pages can’t be shown inside another app. Paste a video link, or open it in a browser tab.'); return false; }
+  if(yt) mode = 'youtube';
+  mode = mode || 'reader';
+  if(!opts.keepView) switchPane('website');
+  const token = ++tab.loadToken;
+  if(tab.id === miniBrowser.activeId) $('urlInput').value = url;
+  tab.loading = true; renderTabStrip();
+  try{
+    if(mode === 'youtube'){
+      const frame = makeFrame(tab, 'youtube');
+      tab.ytSrc = yt.embed; frame.src = yt.embed;
+      tab.title = 'YouTube';
+      tab.web = { url, parsed: null, next: '', prev: '', loginUrl: '' };
+      webMsg('Playing in the app. If a video can’t be embedded, open it on YouTube directly.');
+    } else if(mode === 'live'){
+      const frame = makeFrame(tab, 'live');
+      frame.src = url;
+      tab.title = host;
+      tab.web = { url, parsed: null, next: guessSiblingChapter(url, +1), prev: guessSiblingChapter(url, -1), loginUrl: tab.web.loginUrl || '' };
+      webMsg('Live view. If the page stays blank, the site doesn’t allow being shown inside other apps — use ↗ to open in a browser tab.');
+    } else {
+      const { html, parsed } = await fetchPageHtml(url, webMsg, { strict: /chapter|chap-|\/ch-?\d|\/novel\/|\/read\//i.test(url) });
+      if(token !== tab.loadToken) return false;
+      renderOriginal(tab, html, url);
+      tab.title = (parsed.pageTitle || host).slice(0, 40);
+      tab.web = {
+        url, parsed, loginUrl: parsed.loginUrl || '',
+        next: parsed.next || guessSiblingChapter(url, +1),
+        prev: parsed.prev || guessSiblingChapter(url, -1)
+      };
+      webMsg('Original page shown. Tap 🔊 Read page to hear it read aloud.');
+    }
+    tab.url = url; tab.mode = mode;
+    if(opts.syncEntry && tab.history[tab.hi]) tab.history[tab.hi] = { url, mode };
+    else if(!opts.noPush){
+      tab.history = tab.history.slice(0, tab.hi + 1);
+      tab.history.push({ url, mode });
+      tab.hi = tab.history.length - 1;
+    }
+    tab.loading = false;
+    activateTab(miniBrowser.activeId);
+    if(tab.id === miniBrowser.activeId) $('docSub').textContent = host;
+    return true;
+  }catch(e){
+    if(token === tab.loadToken){
+      tab.loading = false; renderTabStrip();
+      webMsg(`Could not load that page (${e.message}). The site may block automated readers — try Live view or ↗ open in browser tab.`);
+    }
+    return false;
+  }
+}
+
+/* Extract current tab and load into Reader */
+async function readWebPageAsBook(opts = {}){
+  const tab = activeTab();
+  if(!tab || !tab.url){ toast('Open a page first.'); return; }
+  if(tab.mode === 'youtube'){ toast('Videos can’t be read aloud.'); return; }
+  let parsed = tab.web.parsed;
+  if(!parsed){
+    try{
+      webMsg('Getting the readable text…');
+      const res = await fetchPageHtml(tab.url, webMsg, { strict: false });
+      parsed = res.parsed;
+      tab.web.parsed = parsed;
+      tab.web.next = tab.web.next || parsed.next || guessSiblingChapter(tab.url, +1);
+      tab.web.prev = tab.web.prev || parsed.prev || guessSiblingChapter(tab.url, -1);
+    }catch(e){ setStatus('Ready'); webMsg('Could not get the readable text. Try Live view or paste the chapter.'); toast('Could not get readable text: ' + e.message); return; }
+  }
+  if(!parsed.text || parsed.text.length < 60){
+    toast('Not enough text on that page to read.');
+    return;
+  }
+  const id = 'web:' + tab.url;
+  const chapterTitle = webChapterTitle(parsed, tab.url);
+  const book = {
+    id, title: parsed.title || chapterTitle, source: 'web',
+    chapters: [{ title: chapterTitle, text: parsed.text }],
+    webUrl: tab.url,
+    webNextUrl: tab.web.next || '',
+    webPrevUrl: tab.web.prev || '',
+    added: Date.now()
+  };
+  await openWebBookObject(book, { autoplay: opts.autoplay });
+  toast('Saved to Library — ' + parsed.text.split(/\s+/).filter(Boolean).length + ' words ready.');
+}
+
+/* Bridge to the background service worker: for sites that hide their text from
+   plain fetches (wtr-lab and other JS apps), background opens the URL in a
+   hidden tab, lets it hydrate, extracts the chapter, and closes the tab. */
+function grabViaTabBridge(url){
+  return new Promise(resolve => {
+    try{
+      if(!(window.chrome && chrome.runtime && chrome.runtime.sendMessage)){ resolve(null); return; }
+      let settled = false;
+      const done = v => { if(!settled){ settled = true; resolve(v); } };
+      try{
+        chrome.runtime.sendMessage({ type: 'grabUrl', url }, resp => {
+          if(chrome.runtime.lastError){ done(null); return; }
+          done(resp && resp.ok ? resp.item : null);
+        });
+      }catch(e){ done(null); }
+      setTimeout(() => done(null), 90000);  /* hard cap: hidden tab + hydrate + retries */
+    }catch(e){ resolve(null); }
+  });
+}
+
+/* Sites like "My EPUB Collection" (epub.js readers) only show book covers on
+   the page itself — the text lives in .epub files the site fetches. Download
+   those and run them through the normal epub importer. */
+async function importEpubsFromUrls(urls, opts = {}){
+  const list = (urls || []).filter(Boolean).slice(0, 12);
+  if(!list.length){ toast('No books found on that page.'); return; }
+  let firstBook = null, okCount = 0;
+  for(let i = 0; i < list.length; i++){
+    const u = list[i];
+    const name = safeTitle(decodeURIComponent((u.split('/').pop() || '').replace(/\.epub([?#].*)?$/i, ''))) || ('Book ' + (i + 1));
+    setStatus('Downloading “' + name + '”…' + (list.length > 1 ? ' (' + (i + 1) + '/' + list.length + ')' : ''));
+    try{
+      const r = await fetch(u);
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      const buf = await r.arrayBuffer();
+      if(buf.byteLength < 100) throw new Error('Empty file');
+      const chapters = await readEpub(buf);
+      if(!chapters.length) throw new Error('No readable sections');
+      const book = addBook(name, chapters);
+      book.sourceUrl = u;
+      okCount++;
+      if(!firstBook) firstBook = book;
+    }catch(e){ toast('Could not import “' + name + '”: ' + e.message); }
+  }
+  setStatus('Ready');
+  if(firstBook){
+    renderLibrary();
+    openBook(firstBook.id, {resume:false});
+    toast('Imported ' + okCount + ' book' + (okCount > 1 ? 's' : '') + ' from the collection.');
+    if(opts.autoplay){
+      setTimeout(() => {
+        S.playing = true; S.paused = false;
+        if(cinemaAuto && !document.body.classList.contains('cinema')) cinemaOn();
+        updateTransport(); restartSpeech();
+      }, 700);
+    }
+  } else {
+    toast('No books could be downloaded from that page.');
+  }
+}
+
+function webBookFromGrab(url, item, opts = {}){
+  const text = String(item.text || '').trim();
+  if(text.length < 60) return false;
+  const chapterTitle = (item.title || '').trim() || 'Chapter';
+  const book = {
+    id: 'web:' + url, title: chapterTitle, source: 'web',
+    chapters: [{ title: chapterTitle, text, url }],
+    webUrl: url,
+    webNextUrl: item.next || guessSiblingChapter(url, +1) || '',
+    webPrevUrl: guessSiblingChapter(url, -1) || '',
+    added: Date.now()
+  };
+  openWebBookObject(book, opts);
+  return true;
+}
+
+async function loadWebBook(url, opts = {}){
+  const stopToken = opts.autoplay ? playbackStopToken : null;
+  const normalized = normalizeUrl(url);
+  if(!normalized){ toast('Invalid URL.'); return; }
+  /* A direct link to an .epub file → download & import it as a book */
+  if(/\.epub([?#]|$)/i.test(normalized)){
+    await importEpubsFromUrls([normalized], opts);
+    return;
+  }
+  try{
+    const { parsed } = await fetchPageHtml(normalized, (m) => setStatus(m), { strict: false });
+    if(stopToken !== null && stopToken !== playbackStopToken) return;
+    if(!parsed.text || parsed.text.length < 60){
+      /* Site refuses plain fetches (JS-rendered readers) → hidden-tab grab */
+      setStatus('Trying the live-tab reader…');
+      const item = await grabViaTabBridge(normalized);
+      if(stopToken !== null && stopToken !== playbackStopToken) return;
+      if(item && item.kind === 'epub'){ await importEpubsFromUrls(item.epubUrls, opts); return; }
+      if(item && webBookFromGrab(normalized, item, opts)) return;
+      setStatus('Ready'); toast('Not enough text on that page.'); return;
+    }
+    const chapterTitle = webChapterTitle(parsed, normalized);
+    const book = {
+      id: 'web:' + normalized, title: parsed.title || chapterTitle, source: 'web',
+      chapters: [{ title: chapterTitle, text: parsed.text }],
+      webUrl: normalized,
+      webNextUrl: parsed.next || guessSiblingChapter(normalized, +1) || '',
+      webPrevUrl: parsed.prev || guessSiblingChapter(normalized, -1) || '',
+      added: Date.now()
+    };
+    await openWebBookObject(book, opts);
+  }catch(e){
+    if(stopToken !== null && stopToken !== playbackStopToken) return;
+    /* Fetch failed entirely (CORS/403 etc.) → hidden-tab grab fallback */
+    setStatus('Trying the live-tab reader…');
+    const item = await grabViaTabBridge(normalized);
+    if(stopToken !== null && stopToken !== playbackStopToken) return;
+    if(item && item.kind === 'epub'){ await importEpubsFromUrls(item.epubUrls, opts); return; }
+    if(item && webBookFromGrab(normalized, item, opts)) return;
+    setStatus('Ready');
+    toast('Could not load page. Try again, or paste the chapter text with 📋. (' + e.message + ')');
+  }
+}
+
+function openWebBookObject(book, opts = {}){
+  stopPlayback();
+  const saved = persistWebBook(book, opts.keepId);
+  S.book = saved.book; S.mode = 'reader';
+  S.chapterIdx = saved.chapterIdx;
+  syncWebChapter();
+  buildPages(); S.pageIdx = 0; pos.u = 0;
+  $('docSub').textContent = S.book.title;
+  renderPage(); saveProgress(); switchPane('reader');
+  if(opts.autoplay && ttsOK){ S.playing = true; updateTransport(); restartSpeech(); }
+}
+
+function openSignInWindow(url){
+  window.open(url, 'proReaderSignIn', 'popup=yes,width=520,height=740,noopener,noreferrer');
+  webMsg('Sign-in opened in its own window. Reader view loads the public version of pages. If no window appeared, try ↗ open in browser tab.');
+}
+async function goToWebChapter(dir){
+  if(!S.book || S.book.source !== 'web') return;
+  const ch = S.book.chapters[S.chapterIdx];
+  const url = dir === 'next' ? ((ch && ch.next) || S.book.webNextUrl) : ((ch && ch.prev) || S.book.webPrevUrl);
+  const autoplay = S.playing && !S.paused;
+  if(!url){
+    const stored = dir === 'next' ? S.chapterIdx + 1 : S.chapterIdx - 1;
+    if(stored >= 0 && stored < S.book.chapters.length){ loadChapter(stored, {autoplay}); return; }
+    toast('No ' + dir + ' chapter found.'); return;
+  }
+  const idx = S.book.chapters.findIndex(c => sameUrl(c.url, url));
+  if(idx >= 0 && idx !== S.chapterIdx){ loadChapter(idx, {autoplay}); return; }
+  await loadWebBook(url, {autoplay, keepId: S.book.id});
+}
+
+/* ================================================================
+   TRANSLATION
+   ================================================================ */
+const trCache = new Map();
+async function pool(items, n, fn){
+  let i = 0;
+  await Promise.all(Array.from({length:Math.min(n, items.length)}, async () => {
+    while(i < items.length){ const it = items[i++]; await fn(it); }
+  }));
+}
+async function gtranslate(text, code){
+  const pieces = [];
+  let rest = text;
+  while(rest.length > 1200){
+    let cut = rest.lastIndexOf(". ", 1200);
+    cut = cut > 200 ? cut + 1 : 1200;
+    pieces.push(rest.slice(0, cut)); rest = rest.slice(cut);
+  }
+  pieces.push(rest);
+  const out = [];
+  for(const p of pieces){
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 12000);
+    const res = await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=" + encodeURIComponent(code) + "&dt=t&q=" + encodeURIComponent(p), {signal: ctrl.signal});
+    clearTimeout(t);
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    out.push(data[0].map(seg => seg[0]).join(""));
+  }
+  return out.join(" ");
+}
+/* Translate a whole page in one request so the service sees the paragraphs
+   together. Google keeps the blank lines, so the result can be split back. */
+async function gtranslatePage(texts, code){
+  const groups = []; let cur = [], size = 0;
+  for(const t of texts){
+    if(cur.length && size + t.length > 1050){ groups.push(cur); cur = []; size = 0; }
+    cur.push(t); size += t.length + 2;
+  }
+  if(cur.length) groups.push(cur);
+  const out = [];
+  for(const g of groups){
+    if(g.length === 1){ out.push(await gtranslate(g[0], code)); continue; }
+    const tr = await gtranslate(g.join("\n\n"), code);
+    const parts = tr.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+    if(parts.length === g.length) out.push(...parts);
+    else for(const t of g) out.push(await gtranslate(t, code));
+  }
+  if(out.length !== texts.length) throw new Error("split");
+  return out;
+}
+
+/* ------------------------------------------------------------------
+   SMART STYLE: situation-aware, teacher-plain wording
+   ------------------------------------------------------------------ */
+const PLAIN_EN = [
+  ["in order to","to"],["due to the fact that","because"],["despite the fact that","even though"],
+  ["in spite of the fact that","even though"],["for the purpose of","to"],["in the event that","if"],
+  ["at this point in time","now"],["at the present time","now"],["in the near future","soon"],
+  ["a large number of","many"],["a small number of","a few"],["the majority of","most"],
+  ["a considerable amount of","a lot of"],["a significant amount of","a lot of"],
+  ["in close proximity to","near"],["in the vicinity of","near"],["with regard to","about"],
+  ["in regard to","about"],["in relation to","about"],["prior to","before"],["subsequent to","after"],
+  ["with the exception of","except"],["on account of","because of"],["as a result of","because of"],
+  ["in the absence of","without"],["in the course of","during"],["by means of","by"],
+  ["in terms of","for"],["each and every","every"],["first and foremost","first"],
+  ["make a decision","decide"],["take into consideration","consider"],["come to the conclusion","decide"],
+  ["give rise to","cause"],["is able to","can"],["are able to","can"],["was able to","could"],
+  ["were able to","could"],["notwithstanding the fact that","even though"],
+  ["regardless of the fact that","even though"],["notwithstanding","even so"],
+  ["nevertheless","still"],["nonetheless","still"],
+  ["therefore","so"],["consequently","so"],["accordingly","so"],["furthermore","also"],["moreover","also"],
+  ["additionally","also"],["thus","so"],["hence","so"],["albeit","though"],["whilst","while"],
+  ["amongst","among"],["towards","toward"],["thereafter","after that"],["henceforth","from now on"],
+  ["subsequently","later"],["previously","before"],["currently","now"],["immediately","right away"],
+  ["eventually","in the end"],["ultimately","in the end"],["occasionally","sometimes"],["frequently","often"],
+  ["primarily","mainly"],["particularly","especially"],["extremely","very"],["exceptionally","very"],
+  ["remarkably","surprisingly"],["considerably","much"],["entirely","completely"],["solely","only"],
+  ["merely","just"],["commonly","often"],["essentially","basically"],["approximately","about"],
+  ["numerous","many"],["sufficient","enough"],["significant","big"],["substantial","large"],
+  ["additional","more"],["initial","first"],["preliminary","first"],["fundamental","basic"],
+  ["essential","needed"],["utilize","use"],["utilizes","uses"],["utilized","used"],["utilizing","using"],
+  ["utilization","use"],["commence","start"],["commences","starts"],["commenced","started"],
+  ["commencing","starting"],["commencement","start"],["terminate","end"],["terminated","ended"],
+  ["endeavor","try"],["endeavors","tries"],["endeavored","tried"],["endeavoring","trying"],
+  ["obtain","get"],["obtained","got"],["obtaining","getting"],["acquire","get"],["acquired","got"],
+  ["possess","have"],["possessed","had"],["require","need"],["requires","needs"],["required","needed"],
+  ["assist","help"],["assisted","helped"],["assistance","help"],["demonstrate","show"],
+  ["demonstrated","showed"],["indicate","show"],["indicated","showed"],["inquire","ask"],
+  ["inquired","asked"],["respond","answer"],["responded","answered"],["purchase","buy"],
+  ["purchased","bought"],["anticipate","expect"],["anticipated","expected"],["comprehend","understand"],
+  ["comprehended","understood"],["initiate","start"],["initiated","started"],["facilitate","make easier"],
+  ["facilitated","made easier"],["subsequent","later"],["reside","live"],["resided","lived"],
+  ["residence","home"],["depart","leave"],["departed","left"],["offspring","children"],
+  ["spouse","partner"],["deceased","dead"],["physician","doctor"],["remuneration","pay"]
+];
+const PLAIN_OTHER = {
+  es:[["sin embargo","pero"],["no obstante","pero"],["asimismo","también"],["posteriormente","después"],
+      ["previamente","antes"],["utilizar","usar"],["utiliza","usa"],["aproximadamente","más o menos"],
+      ["numerosos","muchos"],["demostrar","mostrar"],["comenzar","empezar"],["finalizar","terminar"],
+      ["obtener","conseguir"],["requerir","necesitar"],["en la actualidad","ahora"],
+      ["en consecuencia","así que"],["por consiguiente","así que"],["debido a que","porque"],
+      ["con el fin de","para"],["a fin de","para"],["de inmediato","enseguida"]],
+  fr:[["cependant","mais"],["néanmoins","pourtant"],["toutefois","pourtant"],["de plus","aussi"],
+      ["par conséquent","donc"],["ultérieurement","plus tard"],["auparavant","avant"],
+      ["approximativement","environ"],["nombreux","beaucoup de"],["démontrer","montrer"],
+      ["nécessiter","avoir besoin de"],["actuellement","en ce moment"],["finalement","à la fin"],
+      ["soudainement","tout à coup"],["immédiatement","tout de suite"],
+      ["en raison de","à cause de"],["afin de","pour"],["dans le but de","pour"],
+      ["malgré le fait que","même si"]],
+  pt:[["no entanto","mas"],["contudo","mas"],["entretanto","mas"],["além disso","também"],
+      ["portanto","então"],["consequentemente","então"],["posteriormente","depois"],
+      ["anteriormente","antes"],["utilizar","usar"],["aproximadamente","mais ou menos"],
+      ["numerosos","muitos"],["demonstrar","mostrar"],["iniciar","começar"],["finalizar","terminar"],
+      ["obter","conseguir"],["necessitar","precisar"],["atualmente","agora"],
+      ["imediatamente","na hora"],["devido a","por causa de"],["a fim de","para"]],
+  de:[["jedoch","aber"],["dennoch","trotzdem"],["außerdem","auch"],["folglich","also"],
+      ["anschließend","danach"],["zuvor","vorher"],["verwenden","nutzen"],["zahlreiche","viele"],
+      ["demonstrieren","zeigen"],["erhalten","bekommen"],["erfordern","brauchen"],["derzeit","jetzt"],
+      ["aufgrund","wegen"]],
+  hi:[["तथापि","लेकिन"],["परन्तु","लेकिन"],["परंतु","लेकिन"],["अतः","इसलिए"],
+      ["इसके अतिरिक्त","इसके अलावा"],["तत्पश्चात","उसके बाद"],["पूर्वतः","पहले"],
+      ["प्रयोग करना","इस्तेमाल करना"],["अनेक","बहुत से"],["प्रदर्शित करना","दिखाना"],
+      ["आरंभ करना","शुरू करना"],["समाप्त करना","खत्म करना"],["प्राप्त करना","पाना"],
+      ["आवश्यकता है","ज़रूरत है"],["वर्तमान में","अभी"],["हेतु","के लिए"]],
+  ur:[["تاہم","لیکن"],["البتہ","لیکن"],["لہٰذا","اس لیے"],["مزید برآں","اس کے علاوہ"],
+      ["بے شمار","بہت سے"],["ظاہر کرنا","دکھانا"],["آغاز کرنا","شروع کرنا"],
+      ["حاصل کرنا","پانا"],["فی الحال","ابھی"]],
+  id:[["namun","tapi"],["oleh karena itu","jadi"],["selanjutnya","lalu"],
+      ["memulai","mulai"],["memperoleh","mendapat"],["saat ini","sekarang"],["karena itu","jadi"]]
+};
+/* Idioms and hard words a teacher would pause on. */
+const GLOSS_EN = [
+  ["kicked the bucket","he died"],["under the weather","sick"],["once in a blue moon","very rarely"],
+  ["break the ice","start a friendly conversation"],["piece of cake","very easy"],
+  ["hit the sack","went to bed"],["spill the beans","tell the secret"],
+  ["cost an arm and a leg","very expensive"],["let the cat out of the bag","reveal the secret"],
+  ["beat around the bush","avoid saying the point"],["bite the bullet","accept something painful"],
+  ["burn the midnight oil","work late at night"],["on cloud nine","very happy"],
+  ["see eye to eye","agree"],["sit on the fence","refuse to choose a side"],
+  ["the ball is in your court","it is your turn to act"],["pulling my leg","joking with me"],
+  ["raining cats and dogs","raining very hard"],["in hot water","in trouble"],
+  ["a blessing in disguise","something good that looked bad"],["add insult to injury","make a bad thing worse"],
+  ["kill two birds with one stone","do two things at once"],["the last straw","the final problem"],
+  ["call it a day","stop for now"],["get out of hand","become uncontrolled"],
+  ["speak of the devil","we were just talking about them"],["the calm before the storm","quiet time before trouble"],
+  ["at the drop of a hat","right away"],["back to square one","start again"],
+  ["cut corners","do it the quick, careless way"],["down to earth","simple and practical"],
+  ["easier said than done","hard to actually do"],["know the ropes","know how things work"],
+  ["lose one's temper","get angry"],["make ends meet","have just enough money"],
+  ["out of the blue","suddenly"],["pull yourself together","calm down"],
+  ["speak your mind","say what you really think"],["the tip of the iceberg","a small part of a big problem"],
+  ["under one's nose","right in front of them"],["up in the air","not decided yet"],
+  ["walk on eggshells","be very careful"],["when pigs fly","never"],
+  ["get the hang of","learn how to do"],["change of heart","changed your mind"],
+  ["keep an eye on","watch"],["on the same page","in agreement"],["pull strings","use influence"],
+  ["read between the lines","guess the hidden meaning"],["second thoughts","doubts"],
+  ["take with a grain of salt","not fully believe"],["turn a blind eye","ignore on purpose"],
+  ["a far cry from","very different from"],["all ears","listening carefully"],
+  ["bite off more than you can chew","take on too much"],["blow off steam","release anger"],
+  ["by the skin of your teeth","just barely"],["cut to the chase","get to the point"],
+  ["wild goose chase","a pointless search"],["gut feeling","instinct"],
+  ["in the same boat","in the same situation"],["leave no stone unturned","try everything"],
+  ["miss the boat","lose the chance"],["on thin ice","in a risky situation"],
+  ["right off the bat","right away"],["the best of both worlds","two good things at once"],
+  ["the elephant in the room","the obvious problem nobody mentions"],["through thick and thin","in good times and bad"],
+  ["tie the knot","get married"],["water under the bridge","past and forgotten"],
+  ["ineffable","too great to describe"],["ubiquitous","everywhere"],["ephemeral","very short-lived"],
+  ["ethereal","light and airy"],["inexorable","impossible to stop"],["implacable","cannot be calmed"],
+  ["recalcitrant","refusing to obey"],["sanguine","hopeful"],["languid","slow and relaxed"],
+  ["morose","gloomy"],["pensive","deep in thought"],["reverie","daydream"],
+  ["machinations","secret plans"],["ostensible","seeming"],["vicissitudes","changes of fortune"],
+  ["quintessential","most typical"],["serendipity","lucky chance"],["cacophony","harsh noise"],
+  ["melancholy","deep sadness"],["solace","comfort"],["trepidation","fear"],
+  ["consternation","shock and worry"],["resignation","accepting without fighting"],
+  ["apathy","lack of interest"],["audacity","boldness"],["malevolence","evil intent"],
+  ["vigilance","watchfulness"],["prudence","good judgment"],["valor","bravery"],
+  ["wrath","great anger"],["anguish","great pain"],["desolation","emptiness and ruin"],
+  ["turmoil","confusion and trouble"],["strife","conflict"],["tranquility","peace"],
+  ["opulence","great wealth"],["affluence","wealth"],["servitude","slavery"],
+  ["tyranny","cruel rule"],["betrothed","engaged to be married"],["paramour","lover"],
+  ["steed","horse"],["apparition","ghost"],["specter","ghost"],["portent","warning sign"],
+  ["omen","sign of the future"],["prophecy","prediction"],["abyss","deep hole"],
+  ["chasm","deep gap"],["precipice","cliff edge"],["luminescence","soft light"],
+  ["incandescent","glowing"],["frigid","very cold"],["scorching","very hot"],
+  ["tempest","storm"],["deluge","flood"],["crimson","deep red"],["azure","sky blue"],
+  ["obsidian","black like glass"],["gilded","covered in gold"],["corpulent","fat"],
+  ["gaunt","very thin"],["haggard","tired and worn"]
+];
+function escapeRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/'/g, "['’]"); }
+function buildTable(pairs){
+  const map = new Map();
+  for(const [from, to] of pairs) map.set(from.toLowerCase(), to);
+  const keys = [...map.keys()].sort((a, b) => b.length - a.length).map(escapeRe);
+  return {map, re:new RegExp("(?<![\\p{L}\\p{N}])(" + keys.join("|") + ")(?![\\p{L}\\p{N}])", "giu")};
+}
+const TR_TABLES = {en:buildTable(PLAIN_EN)};
+for(const k of Object.keys(PLAIN_OTHER)) TR_TABLES[k] = buildTable(PLAIN_OTHER[k]);
+const GLOSS_TABLE = buildTable(GLOSS_EN);
+function caseLike(src, to){
+  if(src === src.toUpperCase() && src !== src.toLowerCase()) return to.toUpperCase();
+  if(/^\p{Lu}/u.test(src)) return to.charAt(0).toUpperCase() + to.slice(1);
+  return to;
+}
+function applyTable(text, table){
+  return text.replace(table.re, m => {
+    const rep = table.map.get(m.toLowerCase().replace(/[’]/g, "'"));
+    return rep ? caseLike(m, rep) : m;
+  });
+}
+/* Break sentences a listener would lose track of. Conservative: only clear
+   clause breaks, never dashes used as asides. */
+function shortenSentences(text){
+  const parts = text.split(/(?<=[^\s])\s*[;；]\s+|,\s*(?:and|but|so|yet)\s+(?=(?:he|she|they|it|we|I|you|the|a|an|his|her|their|this|that|there)\b)/i);
+  if(parts.length < 2) return text;
+  const words = countWords(text);
+  if(words < 26) return text;
+  return parts.map((c, i) => {
+    c = c.trim();
+    if(!c) return "";
+    c = c.replace(/^(?:and|but|so|yet)\s+/i, "");
+    if(!c) return "";
+    c = c.charAt(0).toUpperCase() + c.slice(1);
+    if(i < parts.length - 1 && !/[.!?…]["'”’)]?$/.test(c)) c += ".";
+    return c;
+  }).filter(Boolean).join(" ");
+}
+function addGlosses(text){
+  let count = 0;
+  const seen = new Set();
+  return text.replace(GLOSS_TABLE.re, m => {
+    if(m.charAt(0) === m.charAt(0).toUpperCase() && m.charAt(0) !== m.charAt(0).toLowerCase()) return m;
+    const key = m.toLowerCase().replace(/[’]/g, "'");
+    if(seen.has(key)) return m;
+    seen.add(key);
+    if(count >= 2) return m;
+    const gloss = GLOSS_TABLE.map.get(key);
+    if(!gloss) return m;
+    count++;
+    return m + " (meaning: " + gloss + ")";
+  });
+}
+function tidyText(t){
+  t = String(t || "").replace(/\*\*|__/g, "").replace(/\s+/g, " ").trim();
+  t = t.replace(/\s+([,.;:!?…])/g, "$1");
+  t = t.replace(/([,;:])(?=\p{L})/gu, "$1 ");
+  t = t.replace(/\b(But|And|So|Still|Also),\s+/g, "$1 ");
+  t = t.replace(/\.\.(?!\.)/g, ".");
+  return t;
+}
+/* Turn raw machine output into the chosen reading style. */
+function polish(text, code, style, fromAI){
+  let t = tidyText(text);
+  if(!t || style === "direct") return t;
+  t = shortenSentences(t);
+  const table = TR_TABLES[code];
+  if(table) t = applyTable(t, table);
+  t = tidyText(t);
+  if(!fromAI && style === "teacher" && code === "en") t = addGlosses(t);
+  return t;
+}
+
+/* ------------------------------------------------------------------
+   AI TEACHER (free shared model, whole page with story context)
+   ------------------------------------------------------------------ */
+const AI_URL = "https://text.pollinations.ai/openai";
+let aiGate = 0, aiBusyNoteAt = 0, aiPrefetchTimer = null;
+function aiSystemPrompt(target, style){
+  const plain = style === "direct"
+    ? "Translate closely and accurately, keeping the author's wording."
+    : "Use simple, everyday words that a 12-year-old could follow. Keep sentences short. No fancy or academic vocabulary.";
+  const idiom = style === "teacher"
+    ? " When an idiom or metaphor appears, make its meaning clear inside the sentence with plain words instead of explaining it outside the text."
+    : " Translate idioms by what they really mean, never word for word.";
+  return "You are a warm, patient literature teacher translating a story for a learner.\n"
+    + "Translate the numbered paragraphs into " + target + ".\n"
+    + "Rules:\n"
+    + "- " + plain + idiom + "\n"
+    + "- Keep every character name, place name, title and honorific exactly as written.\n"
+    + "- Keep the same number of paragraphs, and start each one with its number in square brackets, like [1].\n"
+    + "- Stay aware of the scene: who is speaking, who is being spoken to, and how they feel.\n"
+    + (target === "English" ? genderPromptLine() : "")
+    + "- Output only the numbered translation. No notes, no commentary, no title, no markdown.";
+}
+function parseNumbered(txt, n){
+  const out = new Array(n).fill("");
+  const re = /(?:^|\n)\s*(?:\[(\d{1,2})\]|(\d{1,2})[).:])\s+/g;
+  const marks = [];
+  let m;
+  while((m = re.exec(txt))){
+    const num = +(m[1] || m[2]);
+    if(num >= 1 && num <= n) marks.push({num, at:m.index, start:m.index + m[0].length});
+  }
+  if(!marks.length) return null;
+  marks.forEach((mk, i) => {
+    const end = i + 1 < marks.length ? marks[i + 1].at : txt.length;
+    out[mk.num - 1] = txt.slice(mk.start, end).trim();
+  });
+  return out.every(Boolean) ? out : null;
+}
+async function aiTranslate(texts, target, context, onWait){
+  const wait = aiGate - Date.now();
+  if(wait > 9000){
+    const err = new Error("ai-busy-cooldown"); err.busy = true; throw err;
+  }
+  if(wait > 0){
+    if(onWait) onWait(Math.ceil(wait / 1000));
+    await new Promise(r => setTimeout(r, wait));
+  }
+  aiGate = Date.now() + 46000;
+  const numbered = texts.map((t, i) => "[" + (i + 1) + "] " + oneLine(t)).join("\n\n");
+  const user = (context ? "Earlier in the story, for context only (do not translate):\n" + context.slice(-1400) + "\n\n" : "")
+    + "Translate these paragraphs:\n\n" + numbered;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60000);
+  let res;
+  try{
+    res = await fetch(AI_URL, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        model:"openai", referrer:"ultra-reader", temperature:0.25,
+        messages:[
+          {role:"system", content:aiSystemPrompt(target, S.settings.translateStyle || "simple")},
+          {role:"user", content:user}
+        ]
+      }),
+      signal:ctrl.signal
+    });
+  }catch(e){
+    aiGate = Date.now() + 12000;
+    throw new Error("ai-network");
+  }finally{ clearTimeout(timer); }
+  if(res.status === 402 || res.status === 429 || res.status === 403){
+    aiGate = Date.now() + 60000;
+    const err = new Error("ai-busy"); err.busy = true; throw err;
+  }
+  if(!res.ok) throw new Error("ai-http-" + res.status);
+  let data;
+  try{ data = await res.json(); }catch(e){ throw new Error("ai-json"); }
+  const txt = data && data.choices && data.choices[0] && data.choices[0].message
+    ? String(data.choices[0].message.content || "") : "";
+  const parsed = parseNumbered(txt, texts.length);
+  if(!parsed) throw new Error("ai-format");
+  return parsed;
+}
+function oneLine(t){ return String(t).replace(/\s+/g, " ").trim(); }
+function pageContext(page){
+  const idx = S.pages.indexOf(page);
+  let ctx = "";
+  if(idx > 0){
+    const prev = S.pages[idx - 1];
+    ctx = (prev.paras || []).map(p => p.text).join("\n\n");
+  } else if(idx === 0 && S.book && S.chapterIdx > 0){
+    const ch = S.book.chapters[S.chapterIdx - 1];
+    if(ch) ctx = String(ch.text || "").slice(-1400);
+  }
+  return ctx.slice(-1400);
+}
+function noteAiBusy(){
+  const now = Date.now();
+  if(now - aiBusyNoteAt < 120000) return;
+  aiBusyNoteAt = now;
+  toast("AI teacher is busy — using the fast translator for now.");
+}
+async function aiTranslatePage(page, key){
+  const code = LANG_CODES[S.settings.autoTranslate];
+  const style = S.settings.translateStyle || "simple";
+  const res = await aiTranslate(page.paras.map(p => p.text), S.settings.autoTranslate,
+    pageContext(page), secs => progressSet(null, "AI teacher is resting " + secs + "s…"));
+  res.forEach((t, i) => {
+    const p = page.paras[i];
+    if(!p) return;
+    p.display = polish(t, code, style, true);
+    p.trKey = key;
+  });
+  applyGenderPage(page);
+  return res.length;
+}
+/* Quietly translate the next page while the reader is still on this one. */
+function scheduleAiPrefetch(){
+  clearTimeout(aiPrefetchTimer);
+  if(S.settings.translateEngine !== "ai" || S.settings.autoTranslate === "off") return;
+  const page = S.pages[S.pageIdx];
+  if(!page) return;
+  const next = S.pages[S.pages.indexOf(page) + 1];
+  if(!next || !next.paras || !next.paras.length) return;
+  const delay = Math.max(1500, aiGate - Date.now() + 1200);
+  aiPrefetchTimer = setTimeout(async () => {
+    if(S.settings.translateEngine !== "ai" || S.settings.autoTranslate === "off") return;
+    const key = trKey();
+    if(next._trBusy || next.paras.every(p => p.trKey === key)) return;
+    next._trBusy = true;
+    try{
+      await aiTranslatePage(next, key);
+      if(S.pages[S.pageIdx] === next){ rebuildPageUnits(next); renderPage(); }
+    }catch(e){}
+    finally{ next._trBusy = false; }
+  }, delay);
+}
+
+function syncTranslateOptions(){
+  const box = $("trExtra");
+  if(box) box.hidden = S.settings.autoTranslate === "off";
+}
+async function translatePage(force){
+  const tl = S.settings.autoTranslate;
+  if(tl === "off") return;
+  const code = LANG_CODES[tl];
+  const page = S.pages[S.pageIdx];
+  if(!page || !page.paras.length) return;
+  const key = trKey();
+  let need = page.paras.filter(p => force || p.trKey !== key);
+  if(!need.length) return;
+  if(page._trBusy) return;
+  const myGen = renderGen;
+  const style = S.settings.translateStyle || "simple";
+  const engine = S.settings.translateEngine || "google";
+  setStatus("Translating…");
+  const token = progressShow(engine === "ai" ? "AI teacher is reading the page…" : "Translating…", 6, 94);
+  await ensureGender();
+  let failed = 0;
+
+  // 1. Try the AI teacher first (whole page + story context).
+  if(engine === "ai"){
+    page._trBusy = true;
+    try{
+      await aiTranslatePage(page, key);
+      if(renderGen !== myGen || S.pages[S.pageIdx] !== page){ progressAbort(token); return; }
+      progressSet(96, "Checking the wording…");
+      rebuildPageUnits(page);
+      renderPage();
+      progressEnd("AI translation ready", token);
+      if(S.playing && !S.paused) restartSpeech();
+      setStatus(S.playing ? "Reading" : "Ready");
+      scheduleAiPrefetch();
+      return;
+    }catch(e){
+      if(e && e.busy) noteAiBusy();
+      progressSet(Math.max(12, progValue), "Falling back to the fast translator…");
+    }finally{ page._trBusy = false; }
+    need = page.paras.filter(p => force || p.trKey !== key);
+    if(!need.length){ progressEnd("Translation ready", token); return; }
+  }
+
+  // 2. Google path: one request for the whole page when possible, so the
+  //    service sees the paragraphs together instead of one by one.
+  let doneCount = 0;
+  try{
+    if(need.length === page.paras.length && page.paras.length > 1){
+      const chunk = page.paras.slice(0).map(p => p.text);
+      const outs = await gtranslatePage(chunk, code);
+      outs.forEach((t, i) => {
+        const p = page.paras[i];
+        p.display = polish(t, code, style, false);
+        p.trKey = key;
+      });
+      doneCount = outs.length;
+      progressSet(88, "Polishing the wording…");
+    }else{
+      throw new Error("per-paragraph");
+    }
+  }catch(e){
+    await pool(need, 3, async p => {
+      const ck = code + "|" + p.text;
+      try{
+        let t = trCache.get(ck);
+        if(!t){ t = await gtranslate(p.text, code); trCache.set(ck, t); }
+        p.display = polish(t, code, style, false);
+        p.trKey = key;
+      }catch(err){ failed++; p.display = p.text; p.trKey = key; }
+      doneCount++;
+      progressSet(12 + (doneCount / need.length) * 78, `Translating ${doneCount} of ${need.length}…`);
+    });
+  }
+  if(renderGen !== myGen || S.pages[S.pageIdx] !== page){ progressAbort(token); return; }
+  applyGenderPage(page);
+  rebuildPageUnits(page);
+  renderPage();
+  progressEnd("Translation ready", token);
+  if(failed) toast("Some text could not be translated — showing the original.");
+  if(S.playing && !S.paused) restartSpeech();
+  setStatus(S.playing ? "Reading" : "Ready");
+  if(engine === "ai") scheduleAiPrefetch();
+}
+
+/* ================================================================
+   SMART CHINESE GENDER
+   ================================================================ */
+const ZH_SUR="赵钱孙李周吴郑王冯陈蒋沈韩杨朱秦许何吕施张孔曹严华金魏陶姜谢邹苏潘葛范彭鲁马苗方任袁柳史唐费薛雷贺倪汤罗郝安傅顾孟黄萧尹姚邵汪毛米明戴宋熊纪舒屈项董梁杜阮蓝季贾江郭林钟徐高夏蔡田胡凌霍万柯卢莫房解丁邓洪石崔龚程陆叶白楚宁云慕";
+const ZH_STOP="的了着是在看说道把被对向和与也都就还又不没有这那他她它我你们地得里中上下来去给让要会能很太更最将便才却但而及或为从到过起出入";
+const ZH_F_T="师姐|师妹|姑娘|小姐|夫人|仙子|姐姐|妹妹|女士|公主|娘娘|嫂子|奶奶|姨";
+const ZH_M_T="师兄|师弟|公子|少爷|先生|少侠|大哥|哥哥|弟弟|少主|王爷|大叔|爷爷|老爷";
+const ZH_F_C="雪云婷娜丽芳燕梅兰莲倩欣瑶琳玉珍凤月霞萍娟敏静怡婉柔娇媚";
+const ZH_M_C="伟强刚军勇杰峰龙虎辰宇浩轩鹏飞磊斌豪";
+let gAuto=[], gKey="", gNamesP=null, gSel="f", gFocus=null;
+
+/* Find character names in the Chinese text and guess each one's gender. */
+function detectGenders(text){
+  const re=new RegExp("(["+ZH_SUR+"])([\\u4e00-\\u9fff]{1,2})","g");
+  const ft=new RegExp("^("+ZH_F_T+")"), mt=new RegExp("^("+ZH_M_T+")");
+  const st={}; let m;
+  while((m=re.exec(text))){
+    let given=m[2]; const cut=[...given].findIndex(c=>ZH_STOP.includes(c));
+    if(cut===0){ re.lastIndex=m.index+1; continue; }
+    if(cut>0) given=given.slice(0,cut);
+    const name=m[1]+given, end=m.index+name.length; re.lastIndex=end;
+    const after=text.slice(end,end+14).split(/[。！？\n]/)[0];
+    const pr=after.search(/[她他]/);
+    // a 2-character given name may really be 1 character + the next word, so score both forms
+    for(const nm of new Set([name, m[1]+given[0]])){
+      const e=st[nm]||(st[nm]={zh:nm,n:0,s:0}); e.n++;
+      if(ft.test(after)) e.s+=2; else if(mt.test(after)) e.s-=2;
+      if(pr>=0) e.s+=after[pr]==="她"?1:-1;
+      const last=nm[nm.length-1];
+      if(ZH_F_C.includes(last)) e.s+=.4; if(ZH_M_C.includes(last)) e.s-=.4;
+    }
+  }
+  const kept=[];
+  for(const e of Object.values(st).filter(e=>e.n>=2&&Math.abs(e.s)>=1).sort((a,b)=>b.n-a.n||b.zh.length-a.zh.length)){
+    if(kept.some(k=>k.zh.startsWith(e.zh)||e.zh.startsWith(k.zh))) continue;
+    kept.push({zh:e.zh,n:e.n,g:e.s>0?"f":"m",en:""});
+  }
+  return kept.slice(0,14);
+}
+/* Get the English spelling of the names (so we can find them in the translation). */
+async function gNames(key){
+  const need=gAuto.filter(a=>!a.en); if(!need.length) return;
+  const list=need.map(a=>a.zh); let outs=[];
+  try{ outs=(await gtranslate(list.join("\n"),"en")).split(/\n+/).map(x=>x.trim()); }catch(e){}
+  if(outs.length!==list.length) outs=await Promise.all(list.map(z=>gtranslate(z,"en").catch(()=>"")));
+  if(key!==gKey) return;
+  need.forEach((a,i)=>{ const t=String(outs[i]||"").replace(/[^A-Za-z' -]/g,"").trim(); if(t) a.en=t.replace(/\b[a-z]/g,c=>c.toUpperCase()); });
+  renderGender();
+}
+async function ensureGender(){ if(gNamesP) try{ await gNamesP; }catch(e){} }
+function gDetect(){
+  const ch=S.book&&S.book.chapters[S.chapterIdx];
+  const key=S.book?S.book.id+":"+S.chapterIdx:"";
+  if(key===gKey) return; gKey=key;
+  gAuto=(S.settings.genderOn&&ch&&/[\u4e00-\u9fff]/.test(ch.text||""))?detectGenders(ch.text):[];
+  renderGender();
+  gNamesP=gAuto.length?gNames(key):null;
+}
+function gChips(){
+  const fix=S.settings.genderFix||{}, out=new Map();
+  for(const a of gAuto) if(a.en) out.set(a.en.toLowerCase(),{name:a.en,g:a.g});
+  for(const [k,v] of Object.entries(fix)){ const l=k.toLowerCase(); if(v==="x") out.delete(l); else out.set(l,{name:k,g:v}); }
+  return [...out.values()];
+}
+function gMap(){
+  const m=new Map(); if(!S.settings.genderOn) return m;
+  for(const c of gChips()) m.set(c.name.toLowerCase(),c.g);
+  return m;
+}
+/* Fix he/his/himself → she/her/herself when the nearest named character is a woman.
+   Cautious on purpose: mixed-gender sentences are left alone, and "him" is never touched. */
+function fixGenderText(t){
+  const m=gMap(); if(!m.size) return t;
+  const names=[...m.keys()].sort((a,b)=>b.length-a.length).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
+  const re=new RegExp("\\b("+names.join("|")+")\\b|\\b(himself|his|he)\\b|[.!?]+[\"”’')]*(?=\\s|$)","gi");
+  let cur=new Set();
+  return t.replace(re,(s,nm,pr)=>{
+    if(nm){ cur.add(m.get(nm.toLowerCase())); return s; }
+    if(pr){
+      const ref=cur.size===1?[...cur][0]:cur.size===0?gFocus:null;
+      if(ref!=="f") return s;
+      const l=pr.toLowerCase(), w=l==="he"?"she":l==="his"?"her":"herself";
+      return pr[0]===pr[0].toUpperCase()?w[0].toUpperCase()+w.slice(1):w;
+    }
+    gFocus=cur.size===1?[...cur][0]:cur.size===0?gFocus:null; cur=new Set(); return s;
+  });
+}
+function applyGenderPage(page){
+  gFocus=null;
+  const on=S.settings.genderOn&&LANG_CODES[S.settings.autoTranslate]==="en";
+  for(const p of page.paras){
+    if(p.display==null) continue;
+    if(p.display!==p.gOut) p.gRaw=p.display;
+    p.display=on?fixGenderText(p.gRaw):p.gRaw; p.gOut=p.display;
+  }
+}
+function genderPromptLine(){
+  const c=gChips(); if(!S.settings.genderOn||!c.length) return "";
+  return "- Character genders — use exactly these pronouns, never guess: "+c.map(x=>x.name+" = "+(x.g==="f"?"she/her":"he/him")).join("; ")+".\n";
+}
+function renderGender(){
+  const box=$("gChips"); if(!box) return;
+  box.innerHTML=gChips().map(x=>`<span class="gchip"><i>${x.g==="f"?"♀":"♂"}</i>${esc(x.name)} → ${x.g==="f"?"she / her":"he / him"}<button type="button" data-gn="${esc(x.name)}" aria-label="Remove">×</button></span>`).join("")
+    ||'<span class="hint">Names appear here once the chapter has Chinese text with 她 / 他 or titles.</span>';
+  $("gOn").checked=!!S.settings.genderOn;
+  $("gShe").classList.toggle("on",gSel==="f"); $("gHe").classList.toggle("on",gSel==="m");
+}
+function gRefresh(){
+  renderGender();
+  const page=S.pages[S.pageIdx]; if(!page) return;
+  applyGenderPage(page); rebuildPageUnits(page);
+  pos.u=clamp(pos.u,0,Math.max(0,page.units.length-1)); renderPage();
+  if(S.playing&&!S.paused) restartSpeech();
+}
+function initGender(){
+  const fixOf=()=>S.settings.genderFix=S.settings.genderFix||{};
+  $("gOn").onchange=e=>{ S.settings.genderOn=e.target.checked; saveSettings(); gKey=""; gDetect(); gRefresh(); };
+  $("gShe").onclick=()=>{ gSel="f"; renderGender(); };
+  $("gHe").onclick=()=>{ gSel="m"; renderGender(); };
+  const add=()=>{ const v=$("gName").value.trim(); if(!v) return; fixOf()[v]=gSel; $("gName").value=""; saveSettings(); gRefresh(); };
+  $("gAdd").onclick=add;
+  $("gName").onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); add(); } };
+  $("gChips").onclick=e=>{
+    const b=e.target.closest("[data-gn]"); if(!b) return;
+    const n=b.dataset.gn, fix=fixOf();
+    for(const k of Object.keys(fix)) if(k.toLowerCase()===n.toLowerCase()) delete fix[k];
+    if(gAuto.some(a=>a.en&&a.en.toLowerCase()===n.toLowerCase())) fix[n]="x";
+    saveSettings(); gRefresh();
+  };
+}
+
+/* ================================================================
+   APPEARANCE
+   ================================================================ */
+const FONT_MAP = {
+  "Literata":"'Literata',Georgia,serif", "Inter":"'Inter',system-ui,sans-serif",
+  "Georgia":"Georgia,serif", "Arial":"Arial,Helvetica,sans-serif",
+  "Times New Roman":"'Times New Roman',Times,serif", "Urdu Nastaliq":"'Noto Nastaliq Urdu',serif",
+  "Chinese Serif":"'Noto Serif SC',serif", "Japanese Sans":"'Noto Sans JP',sans-serif",
+  "Arabic Amiri":"'Amiri',serif"
+};
+function applyAppearance(){
+  const name = S.settings.font || "Literata";
+  $("content").style.fontFamily = FONT_MAP[name] || `'${name}','Literata',serif`;
+  $("content").style.fontSize = S.settings.size + "px";
+  $("fontInput").value = name;
+  $("sizeRange").value = S.settings.size;
+  $("sizeVal").textContent = S.settings.size + " px";
+  $("rateRange").value = S.settings.rate;
+  $("rateVal").textContent = S.settings.rate.toFixed(2) + "×";
+  document.querySelectorAll("#ratePresets button").forEach(b => b.classList.toggle("active", +b.dataset.r === S.settings.rate));
+  $("highlightSelect").value = S.settings.highlight;
+  $("autoScroll").checked = S.settings.autoScroll;
+  $("autoContinue").checked = S.settings.autoContinue;
+  document.body.dataset.theme = S.settings.theme;
+  $("btnTheme").innerHTML = S.settings.theme === "dark" ? "☀ Light" : "🌙 Dark";
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', S.settings.theme === 'dark' ? '#050505' : '#f2ead9');
+  applyReaderColors();
+}
+function applyReaderColors(){
+  const presets = {
+    dark:["#050505","#ffffff"],
+    light:["#fdf8ec","#2d2517"],
+    sepia:["#f4ecd8","#493b2a"]
+  };
+  const theme = Object.prototype.hasOwnProperty.call(presets, S.settings.readerTheme) || S.settings.readerTheme === "custom"
+    ? S.settings.readerTheme : "dark";
+  const validColor = value => /^#[0-9a-f]{6}$/i.test(value || "");
+  const bg = theme === "custom" && validColor(S.settings.readerBg) ? S.settings.readerBg : (presets[theme] || presets.dark)[0];
+  const text = theme === "custom" && validColor(S.settings.readerText) ? S.settings.readerText : (presets[theme] || presets.dark)[1];
+  const card = $("readerCard");
+  card.style.setProperty("--reading-bg", bg);
+  card.style.setProperty("--reading-text", text);
+  $("readerTheme").value = theme;
+  $("customReaderColors").hidden = theme !== "custom";
+  $("readerBgColor").value = validColor(S.settings.readerBg) ? S.settings.readerBg : "#050505";
+  $("readerTextColor").value = validColor(S.settings.readerText) ? S.settings.readerText : "#ffffff";
+  syncPip();
+}
+
+/* ---------- Speech-fixes UI ---------- */
+function renderRules(){
+  $("rulesList").innerHTML = S.settings.pronRules.map((r, i) =>
+    `<div class="rule ${r.on ? "" : "off"}" data-i="${i}">
+      <label class="switch mini"><input type="checkbox" ${r.on ? "checked" : ""} data-act="toggle"><span></span></label>
+      <button class="rule-text" data-act="edit" title="Edit this rule"><b>${esc(r.from)}</b><span class="arrow">→</span><span class="say">${esc(r.to)}</span></button>
+      <button class="rule-del" data-act="del" title="Remove">×</button>
+    </div>`).join("") || '<p class="hint">No rules — add one below, or reset to the Chinese pronunciation defaults.</p>';
+  $("ruleCount").textContent = S.settings.pronRules.length + " rule" + (S.settings.pronRules.length === 1 ? "" : "s");
+  updatePreview();
+}
+function updatePreview(){
+  const {spoken} = speechTransform($("testInput").value);
+  $("previewText").textContent = spoken.trim() ? "“" + spoken.trim() + "”" : "(nothing would be spoken)";
+}
+function renderSkipChips(){
+  $("skipChips").innerHTML = SKIP_CHIPS.map(c => `<button data-skip="${esc(c)}" title="Add to skip list">+ ${esc(c)}</button>`).join("");
+}
+function resetRuleEditing(){
+  editingRule = null;
+  $("btnAddRule").textContent = "+ Add";
+  $("btnCancelEdit").hidden = true;
+  $("ruleFrom").value = ""; $("ruleTo").value = "";
+}
+
+/* ---------- Modals & drawer ---------- */
+function openModal(id){ $(id).hidden = false; $("scrim").classList.add("on"); }
+function closeModals(){ document.querySelectorAll(".modal").forEach(m => m.hidden = true); syncScrim(); }
+function openDrawer(tab){
+  $("drawer").classList.add("open"); $("scrim").classList.add("on");
+  setDrawerTab(tab || "Pages");
+}
+function closeDrawer(){ $("drawer").classList.remove("open"); syncScrim(); }
+function syncScrim(){
+  const anyModal = [...document.querySelectorAll(".modal")].some(m => !m.hidden);
+  $("scrim").classList.toggle("on", anyModal || $("drawer").classList.contains("open"));
+}
+function setDrawerTab(tab){
+  ["Pages","Chapters","Voice"].forEach(t => {
+    $("dtab" + t).classList.toggle("active", t === tab);
+    $("panel" + t).hidden = t !== tab;
+  });
+}
+function switchPane(which){
+  S.mode = which;
+  const web = which === 'website';
+  $("tabReader").classList.toggle("active", !web);
+  $("tabWebsite").classList.toggle("active", web);
+  $("readerPane").hidden = web;
+  $("websitePane").hidden = !web;
+  $("transport").style.visibility = web ? "hidden" : "visible";
+  if(web){
+    if(!miniBrowser.tabs.length) newTab();
+    // re-show active tab frame
+    const tab = activeTab();
+    if(tab){
+      $("browserStart").style.display = tab.mode === 'start' ? 'block' : 'none';
+      miniBrowser.tabs.forEach(t => { if(t.frame) t.frame.style.display = (t === tab && t.mode !== 'start') ? 'block' : 'none'; });
+      $("urlInput").value = tab.url || '';
+      refreshWebToolbar();
+      renderTabStrip();
+    }
+  }
+  updateStats();
+}
+
+/* ---------- Voices ---------- */
+function loadVoices(){
+  if(!ttsOK) return;
+  voices = speechSynthesis.getVoices();
+  if(!voices.length) return;
+  const sel = $("voiceSelect");
+  sel.innerHTML = '<option value="auto">Auto — match language</option>' +
+    voices.slice().sort((a,b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name))
+      .map(v => `<option value="${esc(v.voiceURI)}">${esc(v.name)} — ${esc(v.lang)}${v.default ? " • default" : ""}</option>`).join("");
+  /* Keep the dropdown in sync when a Piper AI voice is the active choice */
+  const cur = String(S.settings.voiceURI || "auto");
+  let pOpt = sel.querySelector("option[data-piper]");
+  if(cur.startsWith("piper:")){
+    if(!pOpt){
+      pOpt = document.createElement("option");
+      pOpt.setAttribute("data-piper", "1");
+      sel.insertBefore(pOpt, sel.options[1] || null);
+    }
+    const rec = window.PiperBridge ? PiperBridge.list().find(v => v.id === cur.slice(6)) : null;
+    pOpt.value = cur;
+    pOpt.textContent = "🤖 Piper — " + (rec ? rec.label : cur.slice(6));
+  } else if(pOpt) pOpt.remove();
+  sel.value = cur;
+  if(sel.value !== cur){ sel.value = "auto"; }
+}
+
+/* ---------- Piper AI voice picker (Voice drawer) ---------- */
+function renderPiperVoices(){
+  const grid = $("piperVoices"), st = $("piperStatus");
+  if(!grid) return;
+  if(!window.PiperBridge){ setTimeout(renderPiperVoices, 250); return; }
+  const cur = String(S.settings.voiceURI || "");
+  if(!renderPiperVoices.all) renderPiperVoices.all = PiperBridge.list().slice();
+  /* Language-first picker: one entry per language (regional variants merged),
+     defaults to the reader's language, choice is remembered */
+  const langSel = $("piperLang");
+  if(langSel && !langSel.options.length){
+    const fams = new Map();
+    renderPiperVoices.all.forEach(v => {
+      if(!fams.has(v.lang)) fams.set(v.lang, { name: v.langLabel.replace(/\s*\([A-Za-z]{2,3}\)\s*$/, ""), flag: v.flag || "🗣", count: 0 });
+      fams.get(v.lang).count++;
+    });
+    const opts = [...fams.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name));
+    langSel.innerHTML = `<option value="">🌐 Select your language… (${renderPiperVoices.all.length} voices)</option>` +
+      opts.map(([f, o]) => `<option value="${esc(f)}">${o.flag} ${esc(o.name)} — ${o.count} voice${o.count > 1 ? "s" : ""}</option>`).join("");
+    if(!langSel.dataset.init){
+      langSel.dataset.init = "1";
+      const saved = (() => { try{ return localStorage.getItem("upr.piperLang"); }catch(e){ return null; } })();
+      const curVoice = cur.startsWith("piper:") ? renderPiperVoices.all.find(v => v.id === cur.slice(6)) : null;
+      const guess = curVoice ? curVoice.lang : (navigator.language || "").slice(0, 2);
+      langSel.value = saved || (renderPiperVoices.all.some(v => v.lang === guess) ? guess : "");
+    }
+  }
+  const q = (($("piperSearch") || {}).value || "").trim().toLowerCase();
+  const lf = (langSel && langSel.value) || "";
+  const shown = renderPiperVoices.all.filter(v =>
+    (!lf || v.lang === lf) &&
+    (!q || (v.label + " " + v.langLabel + " " + v.id).toLowerCase().includes(q)));
+  const rows = [];
+  rows.push(`<div class="piper-row${!cur.startsWith("piper:") ? " active" : ""}" data-pv="">
+    <span class="pv-g">🗣</span>
+    <div class="pv-main"><b>System voices</b><span>The voices built into your browser (list above)</span></div>
+  </div>`);
+  shown.forEach(v => {
+    rows.push(`<div class="piper-row${cur === "piper:" + v.id ? " active" : ""}" data-pv="${esc(v.id)}" title="Free AI voice · ~${v.sizeMB} MB download, cached offline">
+      <span class="pv-g">${v.flag || "🗣"}</span>
+      <div class="pv-main"><b>${esc(v.label)}</b><span>${esc(v.langLabel)} · ${esc(v.q || "")} · ~${v.sizeMB} MB</span></div>
+      <button class="pv-btn" data-pv-dl="${esc(v.id)}" title="Download this voice (cached for offline use)">⬇</button>
+      <button class="pv-btn pv-del" data-pv-rm="${esc(v.id)}" title="Remove the downloaded model from storage" hidden>🗑</button>
+    </div>`);
+  });
+  if(!shown.length) rows.push('<p class="hint" style="padding:8px 2px">No voices match that search.</p>');
+  grid.innerHTML = rows.join("");
+  PiperBridge.cached().then(cached => {
+    cached.forEach(id => {
+      const row = grid.querySelector(`[data-pv="${CSS.escape(id)}"]`);
+      if(!row) return;
+      const dl = row.querySelector("[data-pv-dl]"), rm = row.querySelector("[data-pv-rm]");
+      if(dl){ dl.classList.add("done"); dl.textContent = "✓"; dl.title = "Downloaded — works offline"; }
+      if(rm) rm.hidden = false;
+    });
+  });
+  grid.onclick = async e => {
+    const rmB = e.target.closest("[data-pv-rm]");
+    if(rmB){
+      e.stopPropagation();
+      try{ await PiperBridge.remove(rmB.dataset.pvRm); }catch(err){}
+      renderPiperVoices(); toast("Voice model removed from storage.");
+      return;
+    }
+    const dlB = e.target.closest("[data-pv-dl]");
+    if(dlB && dlB.classList.contains("done")){ e.stopPropagation(); return; }
+    const row = e.target.closest(".piper-row");
+    if(!row) return;
+    const id = row.dataset.pv;
+    if(!id){  /* "System voices" chip */
+      if(cur.startsWith("piper:")){
+        S.settings.voiceURI = "auto"; saveSettings(); loadVoices(); renderPiperVoices();
+        if(S.playing && !S.paused) restartSpeech();
+      }
+      return;
+    }
+    if(!PiperBridge.has(id)){ toast("That voice is not available right now."); return; }
+    const dl = row.querySelector("[data-pv-dl]");
+    if(dl && !dl.classList.contains("done")){ dl.classList.add("busy"); dl.textContent = "…"; }
+    if(st) st.textContent = "Loading voice… first download takes a moment (model is then cached for offline use).";
+    try{
+      await PiperBridge.load(id, p => {
+        if(st && p && p.total) st.textContent = "Downloading voice… " + Math.round(p.loaded * 100 / p.total) + "%";
+      });
+      S.settings.voiceURI = "piper:" + id; saveSettings(); loadVoices(); renderPiperVoices();
+      if(st) st.textContent = "AI voice ready — it now works even offline.";
+      if(S.playing && !S.paused) restartSpeech();
+      toast("Piper voice ready 🤖");
+    }catch(err){
+      if(st) st.textContent = "Could not load that voice: " + ((err && err.message) || err) + " — check your connection (first download only).";
+      toast("Voice download failed.");
+    } finally {
+      if(dl){ dl.classList.remove("busy"); }
+      renderPiperVoices();
+    }
+  };
+  /* Voice search + language filter */
+  const srch = $("piperSearch");
+  if(srch && !srch.dataset.wired){ srch.dataset.wired = "1"; srch.oninput = () => renderPiperVoices(); }
+  if(langSel && !langSel.dataset.wired){
+    langSel.dataset.wired = "1";
+    langSel.onchange = () => { try{ localStorage.setItem("upr.piperLang", langSel.value); }catch(e){} renderPiperVoices(); };
+  }
+}
+
+/* ---------- Extension integration: "Read this page" from any website ---------- */
+let pendingAutoplay = false;
+async function consumePendingImport(){
+  try{
+    if(!(window.chrome && chrome.storage && chrome.storage.local)) return;
+    const d = await chrome.storage.local.get("uprPending");
+    const it = d && d.uprPending;
+    if(!it || !it.title) return;
+    await chrome.storage.local.remove("uprPending");
+    /* epub collection site → download the .epub files found there */
+    if(it.kind === 'epub' && it.epubUrls && it.epubUrls.length){
+      await importEpubsFromUrls(it.epubUrls, { autoplay: !!it.autoplay });
+      return;
+    }
+    if(!it.text || !String(it.text).trim()) return;
+    const book = addBook(String(it.title).slice(0, 120), splitChapters(String(it.text)));
+    if(it.url) book.sourceUrl = it.url;
+    saveLibrary(); renderLibrary();
+    openBook(book.id, {resume:false});
+    toast("Added from web: “" + String(it.title).slice(0, 60) + "”");
+    if(it.autoplay){
+      pendingAutoplay = true;
+      setTimeout(() => {
+        if(!pendingAutoplay || !S.book || !S.pages.length) return;
+        pendingAutoplay = false;
+        S.playing = true; S.paused = false;
+        if(cinemaAuto && !document.body.classList.contains("cinema")) cinemaOn();
+        updateTransport(); restartSpeech();
+      }, 700);
+    }
+  }catch(e){}
+}
+
+/* ---------- Seed library ---------- */
+function seedLibrary(){
+  if(library.length) return;
+  const c1 = `Rain had fallen on Qingcheng mountain for nine days, and on the tenth, Xiao Chen's jade pendant finally cracked.
+
+He felt it happen during the morning drills — a thin, cold snap against his chest, like a hairline fracture running through ice. Around him, three hundred disciples of the Jade Sword Sect moved through their forms in perfect silence, blades whispering through the wet air. Nobody noticed. Nobody ever noticed Xiao Chen.
+
+"Again!" Elder Zhang Wei's voice rolled across the terrace like distant thunder. "The sword follows the breath. The breath follows the heart. If your heart is muddy, your blade will drown."
+
+Xiao Chen wiped rain from his eyes and began the form again. Sixteen years old, three years in the sect, and still stuck at the third layer of Qi Condensation. The pendant — the only thing his mother had left him — was supposed to be a treasure. Lately it felt like an anchor.
+
+【 Bone Root: fractured 】
+【 Meridians: blocked — seven of twelve 】
+【 Cultivation: Qi Condensation, Layer 3 】
+
+The little window of light flickered in his mind, as it had every morning since the pendant woke. He had never told anyone about it. In a sect that worshipped talent, a broken root was worse than no root at all.
+
+"You're holding your wrist too stiff," said Lin Xin, appearing beside him with two wooden swords and a smile that could disarm an elder. "Like this. Loose as a willow branch." She demonstrated, raindrops scattering off her blade in a silver arc. "My father says stiffness is just fear wearing armor."
+
+Before Xiao Chen could answer, a laugh cut through the rain. Cai Yun strolled over with her usual entourage, her silk robes somehow untouched by the weather. "The willow and the stone," she said sweetly. "How poetic. Tell me, Xiao Chen — does the stone intend to bloom this spring?"
+
+———
+
+That night, Xiao Chen sat alone in the woodshed, turning the cracked pendant over in his fingers. The fracture glowed faintly, a thread of gold in the dark.
+
+"Nine days of rain," he murmured. "They say the mountain weeps before a sword chooses its master."
+
+The pendant grew warm. Then hot. Then it spoke — not in words, but in a pulse that ran up his arm and settled behind his heart like a second heartbeat.
+
+* * *
+
+Far above, on the highest peak, Elder Zhang Wei opened his eyes. "So," he said to the darkness. "It has finally begun."`;
+  const c2 = `The sword pavilion stood at the crown of Qingcheng, nine stories of black timber and bronze bells, and no disciple below the Foundation Establishment realm was permitted to climb it. Which was why, at the hour of the rat, Xiao Chen was climbing it.
+
+"You're insane," Lin Xin hissed from below, keeping watch with her lantern shuttered. "If the pavilion elders catch you—"
+
+"They won't," he said, though his hands were shaking. The pendant burned against his chest like a coal, pulling him upward, step by step. "It's calling. I told you. It's been calling since the rain stopped."
+
+Two figures waited on the seventh landing. Zhou Qing, keeper of the pavilion keys, leaned on his broom as if he had been expecting them for years. Beside him stood a girl Xiao Chen had never seen — pale robes, eyes like winter water, a sword across her back wrapped in white cloth.
+
+"Xu An said someone would come tonight," Zhou Qing remarked. "He didn't say it would be a boy with a broken root and a cracked toy."
+
+"The toy is older than this mountain," said the pale girl. Her name, Xiao Chen would learn, was Ning Xue. "And the root is not broken. It is sealed. There is a difference, though your elders have forgotten it."
+
+———
+
+On the ninth floor there was no treasure, no golden core, no immortal technique. There was only a single sword, rusted almost to nothing, standing point-down in a stone.
+
+"Three hundred years," Ning Xue said quietly. "It has refused every hand in the sect. Qiu Feng tried last winter and burned his palm to the bone. Xue Mei tried at the spring trial and wept for a week. It does not want talent, Xiao Chen. Talent is cheap on this mountain."
+
+"Then what does it want?"
+
+She looked at him with those winter-water eyes. "Someone who knows what it is to be broken, and keeps practicing anyway."
+
+The pendant flared. The rust began to fall like red snow.
+
+* * *
+
+Below, in the courtyard, Cai Yun woke from a dream of drowning and could not say why her heart was racing. Above, the bronze bells of the pavilion began to ring, one by one, though there was no wind.`;
+  const c3 = `By dawn, every elder of the Jade Sword Sect stood in the pavilion courtyard, and every disciple stood behind them, and nobody was speaking. The bells were still ringing. The rusted sword — Xiao Chen held it now, light as a reed, its blade the gray of morning water — had stopped ringing them, but the sound refused to die.
+
+"Put it down," said Elder Zhang Wei at last. His voice was very calm, the way the sky is calm before lightning. "Boy. Put it down, and we will discuss your future like reasonable people."
+
+"His future," said Ning Xue, "is not yours to discuss."
+
+Cai Yun pushed to the front of the crowd, stared at Xiao Chen — really stared, perhaps for the first time in three years — and said nothing at all. Lin Xin, beside her, was grinning so hard it looked painful.
+
+"The sword is called Wangchen," Ning Xue continued. "It forgets nothing. It was waiting for a hand that had been broken and did not stop. Do you understand now, Elder? Your trials measured the wrong thing for three hundred years."
+
+———
+
+Xiao Chen looked down at the gray blade. In its reflection he saw the woodshed, the nine days of rain, the little window of light flickering in his mind. The fracture in his jade pendant had closed. In its place ran a single line of gold, like a river drawn on a map.
+
+【 Seal: released — first gate 】
+【 Meridians: opening — eight of twelve 】
+【 Cultivation: Qi Condensation, Layer 4 】
+
+"Xiao Chen." Elder Zhang Wei descended one step, and his voice changed — older, tired, almost gentle. "Do you know what that sword cost the last man who carried it?"
+
+"No," Xiao Chen said. "But I know what it cost me to keep practicing without it." He raised the blade, and the last of the rust fell away, and the whole mountain seemed to hold its breath. "Master Zhang. Teach me properly this time."
+
+For a long moment the elder said nothing. Then, to the shock of three hundred disciples and nine elders, he bowed — a full bow, hands folded, the bow a master gives an equal.
+
+"Begin at sunrise," said Zhang Wei. "And bring the girl with the winter eyes. She has been reading our library without permission for six years, and it is time someone made it official."
+
+* * *
+
+That evening, for the first time in memory, the rain over Qingcheng fell warm. Somewhere in the clouds, Zhou Qing later swore, he heard a sword laughing.
+
+Tomorrow, the mountain would remember his name.`;
+  const book = {id:uid(), title:"The Jade Sword Chronicle", added:Date.now(), source:"library",
+    chapters:[
+      {title:"Chapter 1 — The Broken Jade", text:c1},
+      {title:"Chapter 2 — Night on Qingcheng", text:c2},
+      {title:"Chapter 3 — The Sword Chooses", text:c3}
+    ]};
+  library.push(book); saveLibrary();
+  try{ localStorage.setItem("upr.lastBook", book.id); }catch(e){}
+  if(!bookmarks.length){
+    bookmarks.push({id:uid(), bookId:book.id, bookTitle:book.title, source:"library", url:null,
+      ch:1, chTitle:book.chapters[1].title, page:0, u:0,
+      excerpt:"The sword pavilion stood at the crown of Qingcheng", ts:Date.now()});
+    saveBookmarks();
+  }
+}
+
+/* ================================================================
+   INIT & EVENTS
+   ================================================================ */
+function syncHeaderHeight(){
+  const h = document.querySelector("header");
+  const v = h ? Math.round(h.getBoundingClientRect().height) : 66;
+  document.documentElement.style.setProperty("--headerH", v + "px");
+}
+function init(){
+  if(!ttsOK) $("speechWarning").hidden = false;
+  syncHeaderHeight();
+  addEventListener("resize", syncHeaderHeight);
+  addEventListener("orientationchange", () => setTimeout(syncHeaderHeight, 180));
+  setTimeout(syncHeaderHeight, 800);
+
+  $("translateSelect").innerHTML = '<option value="off">Off (original language)</option>' +
+    LANGS.map(([n,c]) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+  $("translateSelect").value = S.settings.autoTranslate;
+  $("translateStyle").value = S.settings.translateStyle;
+  $("translateEngine").value = S.settings.translateEngine;
+  syncTranslateOptions();
+  $("speechLang").innerHTML = '<option value="auto">Auto</option>' +
+    LANGS.map(([n,c]) => `<option value="${esc(c)}">${esc(n)}</option>`).join("");
+  $("speechLang").value = S.settings.speechLang;
+
+  // Speed dial
+  $("speedDial").innerHTML = SPEED_DIAL_LINKS.map(([e,n,u]) =>
+    `<button data-target="${esc(u)}"><span class="sd-icon">${e}</span><span>${esc(n)}</span></button>`).join("");
+
+  seedLibrary();
+  applyAppearance();
+  $("ambientMusic").value = S.settings.ambientMusic;
+  $("ambientVolume").value = S.settings.ambientVolume;
+  $("ambientVolumeValue").textContent = Math.round(S.settings.ambientVolume * 100) + "%";
+  $("ambientVolume").disabled = S.settings.ambientMusic === "off";
+  updateAmbientFileControls();
+  renderSkipChips();
+  $("skipInput").value = S.settings.skipList;
+  $("skipToggle").checked = S.settings.skipEnabled;
+  $("pronToggle").checked = S.settings.pronEnabled;
+  $("webAutoContinue").checked = S.settings.webAutoContinue;
+  renderRules();
+  initGender(); renderGender();
+  loadVoices();
+  renderPiperVoices();
+  if(ttsOK) speechSynthesis.onvoiceschanged = loadVoices;
+  /* Warm up the Piper engine in the background so pressing play is instant */
+  if(String(S.settings.voiceURI || "").startsWith("piper:")){
+    const warm = () => { if(window.PiperBridge) PiperBridge.load(piperVoiceId()).catch(() => {}); else setTimeout(warm, 400); };
+    setTimeout(warm, 1200);
+  }
+  /* "Read this page" / "Read selection" from the toolbar, popup or context menu */
+  consumePendingImport();
+  try{
+    if(window.chrome && chrome.storage && chrome.storage.onChanged){
+      chrome.storage.onChanged.addListener((ch, area) => {
+        if(area === "local" && ch.uprPending) consumePendingImport();
+      });
+    }
+  }catch(e){}
+
+  let last = null;
+  try{ last = localStorage.getItem("upr.lastBook"); }catch(e){}
+  /* A pop-out reading window links back here with ?read=<book id> — open that book,
+     hydrate IndexedDB texts first, then restore the lights-off environment. */
+  const urlParams = new URLSearchParams(location.search);
+  const readId = urlParams.get("read");
+  if(cinemaMode === "pip" && window.opener){ cinemaMode = "tab"; try{ localStorage.setItem("urCinemaMode", "tab"); }catch(e){} }
+  hydrateLibrary().then(() => {
+    const target = (readId && library.find(b => b.id === readId)) || library.find(b => b.id === last) || library[0];
+    if(target) openBook(target.id);
+    else switchPane("reader");
+    if(readId && (urlParams.get("env") || cinemaAuto) && !document.body.classList.contains("cinema")) cinemaOn();
+    updateTransport(); setStatus("Ready");
+  });
+
+  /* Header / mode */
+  $("btnLibrary").onclick = () => { renderLibrary(); openModal("modalLibrary"); };
+
+  /* Library backup & restore */
+  $("libBackup").onclick = () => {
+    const data = {v:1, app:"ultra-pro-reader", exported:Date.now(), library, bookmarks, progress:{}};
+    try{ data.progress = JSON.parse(localStorage.getItem("upr.progress") || "{}"); }catch(e){}
+    const blob = new Blob([JSON.stringify(data)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "ultra-reader-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast("Library backup downloaded.");
+  };
+  $("libRestore").onclick = () => $("libRestoreFile").click();
+  $("libRestoreFile").onchange = async e => {
+    const f = e.target.files[0]; e.target.value = "";
+    if(!f) return;
+    try{
+      const d = JSON.parse(await f.text());
+      if(!d || !Array.isArray(d.library)) throw new Error("bad");
+      const have = new Set(library.map(b => b.id));
+      let added = 0;
+      d.library.forEach(b => { if(b && b.id && !have.has(b.id)){ library.push(b); added++; } });
+      if(Array.isArray(d.bookmarks)) bookmarks = bookmarks.concat(d.bookmarks.filter(b => b && !bookmarks.some(x => x.id === b.id)));
+      if(d.progress && typeof d.progress === "object"){
+        try{
+          const cur = JSON.parse(localStorage.getItem("upr.progress") || "{}");
+          localStorage.setItem("upr.progress", JSON.stringify({...d.progress, ...cur}));
+        }catch(_){}
+      }
+      saveLibrary(); saveBookmarks(); renderLibrary();
+      toast(`Restored ${added} new book${added === 1 ? "" : "s"} from backup.`);
+    }catch(err){ toast("That file is not a valid Ultra Reader backup."); }
+  };
+  $("tabReader").onclick = () => switchPane("reader");
+  $("tabWebsite").onclick = () => switchPane("website");
+  $("btnOpenWeb").onclick = () => { $("webUrlInput").value = activeTab()?.url || ''; openModal("modalWeb"); setTimeout(() => $("webUrlInput").focus(), 60); };
+  $("btnPaste").onclick = () => openModal("modalPaste");
+  $("btnOpenFile").onclick = () => $("fileInput").click();
+  $("fileInput").onchange = async e => { await importFiles([...e.target.files]); e.target.value = ""; };
+
+  /* Website controls */
+  $("btnGo").onclick = () => navigate(activeTab() || newTab(), $("urlInput").value);
+  $("urlInput").addEventListener("keydown", e => { if(e.key === "Enter") navigate(activeTab() || newTab(), $("urlInput").value); });
+  $("urlInput").addEventListener("focus", e => e.target.select());
+  $("btnWebBack").onclick = () => {
+    const tab = activeTab(); if(!tab || tab.hi <= 0) return;
+    const from = tab.hi; tab.hi--;
+    const entry = tab.history[tab.hi];
+    navigate(tab, entry.url, { mode: entry.mode, noPush: true }).then(ok => { if(!ok){ tab.hi = from; refreshWebToolbar(); } });
+  };
+  $("btnWebFwd").onclick = () => {
+    const tab = activeTab(); if(!tab || tab.hi >= tab.history.length - 1) return;
+    const from = tab.hi; tab.hi++;
+    const entry = tab.history[tab.hi];
+    navigate(tab, entry.url, { mode: entry.mode, noPush: true }).then(ok => { if(!ok){ tab.hi = from; refreshWebToolbar(); } });
+  };
+  $("btnWebReload").onclick = () => {
+    const tab = activeTab(); if(!tab || !tab.url) return;
+    webCache.delete(tab.url);
+    navigate(tab, tab.url, { mode: tab.mode, noPush: true });
+  };
+  $("btnWebHome").onclick = () => {
+    const tab = activeTab() || newTab();
+    if(tab.frame){ tab.frame.remove(); tab.frame = null; }
+    tab.mode = 'start'; tab.title = 'New tab'; tab.url = '';
+    tab.web = { url: '', parsed: null, next: '', prev: '', loginUrl: '' };
+    webMsg('Choose a site, type an address, or search the web.');
+    activateTab(tab.id);
+  };
+  $("btnWebMode").onclick = () => {
+    const tab = activeTab();
+    if(!tab || !tab.url || (tab.mode !== 'reader' && tab.mode !== 'live')) return;
+    const mode = tab.mode === 'live' ? 'reader' : 'live';
+    navigate(tab, tab.url, { mode, noPush: true, syncEntry: true });
+  };
+  $("btnReadPage").onclick = () => readWebPageAsBook({ autoplay: false });
+  $("btnSignIn").onclick = () => {
+    const tab = activeTab();
+    if(!tab || !tab.url){ toast('Open the website first, then tap Sign in.'); return; }
+    let url = tab.web.loginUrl;
+    if(!url){ try{ url = new URL('/login', tab.url).href; }catch(_){ return; } }
+    openSignInWindow(url);
+  };
+  $("btnWebPrev").onclick = () => { const tab = activeTab(); if(tab && tab.web.prev) navigate(tab, tab.web.prev, { mode: tab.mode === 'live' ? 'live' : 'reader' }); else webMsg('No previous chapter found.'); };
+  $("btnWebNext").onclick = () => { const tab = activeTab(); if(tab && tab.web.next) navigate(tab, tab.web.next, { mode: tab.mode === 'live' ? 'live' : 'reader' }); else webMsg('No next chapter found.'); };
+  $("btnWebExternal").onclick = () => { const tab = activeTab(); if(tab && tab.url) window.open(tab.url, '_blank', 'noopener,noreferrer'); };
+  $("webAutoContinue").onchange = e => { S.settings.webAutoContinue = e.target.checked; saveSettings(); };
+  $("speedDial").addEventListener("click", e => {
+    const b = e.target.closest("[data-target]");
+    if(!b) return;
+    const target = b.dataset.target;
+    const tab = activeTab() || newTab();
+    if(target === 'youtube'){ $("urlInput").value = 'https://www.youtube.com/watch?v='; $("urlInput").focus(); webMsg('Paste a YouTube video or playlist link, then press Go.'); }
+    else if(target === 'search'){ $("urlInput").value = ''; $("urlInput").focus(); webMsg('Type what you want to search for, then press Go.'); }
+    else navigate(tab, target);
+  });
+
+  /* Chapter nav (reader) */
+  $("btnPrevCh").onclick = () => {
+    if(S.book && S.book.source === "web") goToWebChapter('prev');
+    else loadChapter(S.chapterIdx - 1);
+  };
+  $("btnNextCh").onclick = () => {
+    if(S.book && S.book.source === "web") goToWebChapter('next');
+    else loadChapter(S.chapterIdx + 1);
+  };
+  $("autoContinue").onchange = e => { S.settings.autoContinue = e.target.checked; saveSettings(); };
+
+  
+  /* Read on click from clicked word or sentence */
+  $("content").addEventListener("click", e => {
+    if(!S.book || !S.pages.length) return;
+    const page = S.pages[S.pageIdx];
+    if(!page || !page.units || !page.units.length) return;
+
+    // Check if user is selecting text (do not trigger on text drag/selection)
+    const selection = window.getSelection ? window.getSelection().toString() : "";
+    if(selection && selection.trim().length > 0) return;
+
+    const wEl = e.target.closest(".w");
+    const pEl = e.target.closest("p[data-p]");
+    if(!pEl) return;
+    const pIdx = parseInt(pEl.dataset.p, 10);
+
+    let targetUnitIdx = -1;
+    let wordStart = null;
+
+    if(wEl && wEl.dataset.s != null){
+      wordStart = parseInt(wEl.dataset.s, 10);
+      // Find unit matching paragraph and spanning or starting near this word offset
+      targetUnitIdx = page.units.findIndex(u => u.p === pIdx && wordStart >= u.start && wordStart < u.end);
+      if(targetUnitIdx < 0){
+        // Fallback: closest unit in this paragraph starting after or at the word
+        targetUnitIdx = page.units.findIndex(u => u.p === pIdx && u.start >= wordStart);
+      }
+    }
+
+    if(targetUnitIdx < 0){
+      const sentEl = e.target.closest(".sent[data-sid]");
+      if(sentEl && sentEl.dataset.sid != null){
+        const sid = parseInt(sentEl.dataset.sid, 10);
+        targetUnitIdx = page.units.findIndex(u => u.p === pIdx && u.sid === sid);
+      }
+    }
+
+    if(targetUnitIdx < 0){
+      // Paragraph level fallback: first unit of this paragraph
+      targetUnitIdx = page.units.findIndex(u => u.p === pIdx);
+    }
+
+    if(targetUnitIdx >= 0){
+      pos.u = targetUnitIdx;
+      const u = page.units[pos.u];
+      const fw = wordStart != null ? findWord(u.p, wordStart, u) : findWord(u.p, u.start, u);
+      highlightUnit(u, fw ? fw.s : (wordStart != null ? wordStart : u.start), false);
+      updateStats();
+
+      // Start/resume speaking from the clicked position
+      S.playing = true;
+      S.paused = false;
+      S.needRespeak = false;
+      updateTransport();
+      restartSpeech();
+    }
+  });
+
+  /* Transport */
+  $("btnPlay").onclick = togglePlay;
+  $("btnStop").onclick = stopPlayback;
+  $("btnPrevSent").onclick = () => seekSentence(-1);
+  $("btnNextSent").onclick = () => seekSentence(1);
+  $("btnPrevPage").onclick = () => goToPage(S.pageIdx - 1);
+  $("btnNextPage").onclick = () => goToPage(S.pageIdx + 1);
+  $("btnBookmark").onclick = addBookmark;
+  $("btnPages").onclick = () => openDrawer("Pages");
+  $("btnSettings").onclick = () => openDrawer("Voice");
+
+  /* Reading environment: lights-off / full screen / pop-out */
+  $("btnCineTab").onclick = () => { if(cinemaMode === "tab" && document.body.classList.contains("cinema")) cinemaOff(); else cinemaOn("tab"); };
+  $("btnCineFull").onclick = () => cinemaOn("full");
+  $("btnCinePip").onclick = () => cinemaOn("pip");
+  $("btnCinemaExit").onclick = cinemaOff;
+  $("btnCineFullBar").onclick = () => cinemaOn("full");
+  $("btnCinePipBar").onclick = () => cinemaOn("pip");
+  $("cinemaAuto").onchange = e => {
+    cinemaAuto = e.target.checked;
+    try{ localStorage.setItem("urCinemaAuto", cinemaAuto ? "1" : "0"); }catch(_){}
+  };
+  updateCinemaUI(); syncHud();
+
+  /* Footer */
+  $("btnTheme").onclick = () => { S.settings.theme = S.settings.theme === "dark" ? "light" : "dark"; saveSettings(); applyAppearance(); };
+  $("btnBookmarks").onclick = () => { renderBookmarks(); openModal("modalBookmarks"); };
+
+  /* Drawer */
+  $("btnCloseDrawer").onclick = closeDrawer;
+  $("scrim").onclick = () => { closeDrawer(); closeModals(); };
+  $("dtabPages").onclick = () => setDrawerTab("Pages");
+  $("dtabChapters").onclick = () => setDrawerTab("Chapters");
+  $("dtabVoice").onclick = () => setDrawerTab("Voice");
+  $("pagesList").addEventListener("click", e => {
+    const b = e.target.closest("[data-page]");
+    if(b){ goToPage(+b.dataset.page); if(innerWidth < 720) closeDrawer(); }
+  });
+  $("chaptersList").addEventListener("click", e => {
+    const edit = e.target.closest("[data-rename-chapter]");
+    if(edit){
+      e.preventDefault(); e.stopPropagation();
+      openRenameChapter(edit.dataset.renameChapter, +edit.dataset.chIdx);
+      return;
+    }
+    const ch = e.target.closest("[data-ch]");
+    const nav = e.target.closest("[data-webnav]");
+    if(ch){ loadChapter(+ch.dataset.ch); if(innerWidth < 720) closeDrawer(); }
+    if(nav){ goToWebChapter(nav.dataset.webnav); }
+  });
+
+  /* Voice & appearance */
+  $("voiceSelect").onchange = e => { voiceFallbackURI = ""; S.settings.voiceURI = e.target.value; saveSettings(); if(S.playing && !S.paused) restartSpeech(); };
+  $("speechLang").onchange = e => { voiceFallbackURI = ""; S.settings.speechLang = e.target.value; saveSettings(); if(S.playing && !S.paused) restartSpeech(); };
+  $("rateRange").oninput = e => { S.settings.rate = +e.target.value; saveSettings(); applyAppearance(); updateStats(); };
+  $("rateRange").onchange = () => { if(S.playing && !S.paused) restartSpeech(); };
+  $("ratePresets").addEventListener("click", e => {
+    const b = e.target.closest("[data-r]");
+    if(b){ S.settings.rate = +b.dataset.r; saveSettings(); applyAppearance(); updateStats(); if(S.playing && !S.paused) restartSpeech(); }
+  });
+  $("fontInput").onchange = e => { S.settings.font = e.target.value.trim() || "Literata"; saveSettings(); applyAppearance(); };
+  $("sizeRange").oninput = e => { S.settings.size = +e.target.value; saveSettings(); applyAppearance(); };
+  $("btnResetAppearance").onclick = () => {
+    Object.assign(S.settings, {font:"Literata", size:19, highlight:"sentence+word", autoScroll:true,
+      readerTheme:"dark", readerBg:"#050505", readerText:"#ffffff"});
+    saveSettings(); applyAppearance(); toast("Appearance reset.");
+  };
+  $("readerTheme").onchange = e => { S.settings.readerTheme = e.target.value; saveSettings(); applyReaderColors(); };
+  $("readerBgColor").oninput = e => { S.settings.readerBg = e.target.value; saveSettings(); applyReaderColors(); };
+  $("readerTextColor").oninput = e => { S.settings.readerText = e.target.value; saveSettings(); applyReaderColors(); };
+  $("ambientMusic").onchange = e => {
+    S.settings.ambientMusic = e.target.value;
+    $("ambientVolume").disabled = e.target.value === "off";
+    updateAmbientFileControls();
+    saveSettings(); syncAmbientMusic();
+  };
+  $("ambientFile").onchange = e => loadAmbientFile(e.target.files && e.target.files[0]);
+  $("ambientVolume").oninput = e => {
+    S.settings.ambientVolume = clamp(+e.target.value, 0, 1);
+    $("ambientVolumeValue").textContent = Math.round(S.settings.ambientVolume * 100) + "%";
+    saveSettings(); syncAmbientMusic();
+  };
+  $("highlightSelect").onchange = e => { S.settings.highlight = e.target.value; saveSettings(); const u = currentUnit(); if(u && (S.playing || $("content").querySelector(".hl-w,.hl-s,.hl-p"))) highlightUnit(u, u.start, false); };
+  $("autoScroll").onchange = e => { S.settings.autoScroll = e.target.checked; saveSettings(); };
+  $("translateSelect").onchange = e => {
+    S.settings.autoTranslate = e.target.value; saveSettings(); syncTranslateOptions();
+    const page = S.pages[S.pageIdx];
+    if(page){ rebuildPageUnits(page); pos.u = clamp(pos.u, 0, Math.max(0, page.units.length - 1)); renderPage(); if(S.playing && !S.paused) restartSpeech(); }
+  };
+  $("translateStyle").onchange = e => {
+    S.settings.translateStyle = e.target.value; saveSettings();
+    if(S.settings.autoTranslate !== "off") translatePage(true);
+    toast(e.target.value === "teacher" ? "Teacher style — plain words with short explanations."
+      : e.target.value === "simple" ? "Simple words — short, everyday language."
+      : "Direct translation — the author's own wording.");
+  };
+  $("translateEngine").onchange = e => {
+    S.settings.translateEngine = e.target.value; saveSettings();
+    if(S.settings.autoTranslate !== "off"){
+      translatePage(true);
+      if(e.target.value === "ai") toast("AI teacher reads the whole page — a few seconds per page.");
+    }
+  };
+  $("btnFonts").onclick = async () => {
+    openModal("modalFonts");
+    $("fontsList").innerHTML = '<p class="hint">Loading fonts…</p>';
+    if(!("queryLocalFonts" in window)){
+      $("fontsList").innerHTML = '<p class="hint">This browser can\'t list installed fonts. Type the exact font name in the Font box instead.</p>';
+      return;
+    }
+    try{
+      const fs = await window.queryLocalFonts();
+      S.allFonts = [...new Set(fs.map(f => f.family))].sort((a,b) => a.localeCompare(b));
+      renderFonts("");
+    }catch(e){
+      $("fontsList").innerHTML = '<p class="hint">Font access was denied. Type the font name manually instead.</p>';
+    }
+  };
+  $("fontSearch").oninput = e => renderFonts(e.target.value);
+  $("fontsList").addEventListener("click", e => {
+    const b = e.target.closest("[data-font]");
+    if(b){ S.settings.font = b.dataset.font; saveSettings(); applyAppearance(); closeModals(); toast("Font set to " + b.dataset.font); }
+  });
+
+  /* Skip words / punctuation */
+  $("skipToggle").onchange = e => { S.settings.skipEnabled = e.target.checked; saveSettings(); updatePreview(); if(S.playing && !S.paused) restartSpeech(); };
+  let skipTimer = null;
+  $("skipInput").oninput = e => {
+    clearTimeout(skipTimer);
+    skipTimer = setTimeout(() => {
+      S.settings.skipList = e.target.value; saveSettings(); updatePreview();
+      if(S.playing && !S.paused) restartSpeech();
+    }, 350);
+  };
+  $("skipChips").addEventListener("click", e => {
+    const b = e.target.closest("[data-skip]");
+    if(!b) return;
+    const tok = b.dataset.skip;
+    const cur = $("skipInput").value.trim();
+    const parts = cur.split(",").map(s => s.trim());
+    if(parts.includes(tok)){ toast("Already in the skip list."); return; }
+    $("skipInput").value = cur ? cur.replace(/,\s*$/, "") + ", " + tok : tok;
+    S.settings.skipList = $("skipInput").value; saveSettings(); updatePreview();
+    if(S.playing && !S.paused) restartSpeech();
+  });
+
+  /* Pronunciation fixes */
+  $("pronToggle").onchange = e => { S.settings.pronEnabled = e.target.checked; saveSettings(); updatePreview(); if(S.playing && !S.paused) restartSpeech(); };
+  $("rulesList").addEventListener("click", e => {
+    const row = e.target.closest(".rule"); if(!row) return;
+    const i = +row.dataset.i;
+    const act = e.target.closest("[data-act]") && e.target.closest("[data-act]").dataset.act;
+    if(act === "del"){
+      const [r] = S.settings.pronRules.splice(i, 1);
+      saveSettings(); renderRules();
+      toast(`Removed ${r.from} → ${r.to}`, {action:"Undo", onAction:() => { S.settings.pronRules.splice(i, 0, r); saveSettings(); renderRules(); }});
+      if(S.playing && !S.paused) restartSpeech();
+    } else if(act === "edit"){
+      const r = S.settings.pronRules[i];
+      editingRule = i;
+      $("ruleFrom").value = r.from; $("ruleTo").value = r.to;
+      $("btnAddRule").textContent = "Update"; $("btnCancelEdit").hidden = false;
+      $("ruleFrom").focus();
+    }
+  });
+  $("rulesList").addEventListener("change", e => {
+    if(e.target.matches('input[type="checkbox"]')){
+      const i = +e.target.closest(".rule").dataset.i;
+      S.settings.pronRules[i].on = e.target.checked;
+      saveSettings(); renderRules();
+      if(S.playing && !S.paused) restartSpeech();
+    }
+  });
+  $("btnAddRule").onclick = () => {
+    const from = $("ruleFrom").value.trim(), to = $("ruleTo").value.trim();
+    if(!from || !to){ toast("Enter both a word and how to say it."); return; }
+    if(!/^[\p{L}\p{N}][\p{L}\p{N}'’\-]*$/u.test(from)){ toast("The word can only contain letters, numbers, apostrophes or hyphens."); return; }
+    const idx = editingRule != null ? editingRule : S.settings.pronRules.findIndex(r => r.from.toLowerCase() === from.toLowerCase());
+    if(idx >= 0) S.settings.pronRules[idx] = {...S.settings.pronRules[idx], from, to};
+    else S.settings.pronRules.unshift({from, to, on:true});
+    resetRuleEditing(); saveSettings(); renderRules();
+    toast(`Saved: ${from} → ${to}`);
+    if(S.playing && !S.paused) restartSpeech();
+  };
+  $("btnCancelEdit").onclick = resetRuleEditing;
+  $("ruleTo").addEventListener("keydown", e => { if(e.key === "Enter") $("btnAddRule").click(); });
+  $("btnResetRules").onclick = () => {
+    const old = S.settings.pronRules;
+    S.settings.pronRules = DEFAULT_PRON.map(([from,to]) => ({from, to, on:true}));
+    resetRuleEditing(); saveSettings(); renderRules();
+    toast("Pronunciation defaults restored.", {action:"Undo", onAction:() => { S.settings.pronRules = old; saveSettings(); renderRules(); }});
+    if(S.playing && !S.paused) restartSpeech();
+  };
+  $("btnClearRules").onclick = () => {
+    const old = S.settings.pronRules;
+    if(!old.length) return;
+    S.settings.pronRules = [];
+    resetRuleEditing(); saveSettings(); renderRules();
+    toast("All pronunciation rules cleared.", {action:"Undo", onAction:() => { S.settings.pronRules = old; saveSettings(); renderRules(); }});
+    if(S.playing && !S.paused) restartSpeech();
+  };
+  $("testInput").oninput = updatePreview;
+  $("btnTest").onclick = () => {
+    if(!ttsOK && !window.PiperBridge){ toast("Speech synthesis is not available in this browser. Try Chrome or Edge."); return; }
+    const {spoken} = speechTransform($("testInput").value);
+    if(!spoken.trim()){ toast("Nothing to speak after the skip rules."); return; }
+    gen++; try{ speechSynthesis.cancel(); }catch(e){}
+    piperStop();
+    S.playing = false; S.paused = false; updateTransport();
+    if(isPiperVoice()){
+      setStatus("Piper: generating…");
+      window.PiperBridge.speak(spoken, piperVoiceId()).then(blob => {
+        const au = new Audio(URL.createObjectURL(blob));
+        au.playbackRate = clamp(S.settings.rate, 0.5, 4);
+        au.onended = au.onerror = () => setStatus("Ready");
+        au.play().catch(() => setStatus("Ready"));
+      }).catch(e => { setStatus("Ready"); toast("Piper voice failed: " + ((e && e.message) || e)); });
+      return;
+    }
+    setStatus("Testing pronunciation…");
+    const ut = new SpeechSynthesisUtterance(spoken);
+    applyVoice(ut); ut.rate = S.settings.rate;
+    ut.onend = () => setStatus("Ready");
+    ut.onerror = () => setStatus("Ready");
+    setTimeout(() => { try{ speechSynthesis.speak(ut); }catch(e){ setStatus("Ready"); } }, 60);
+  };
+
+  /* Modals */
+  document.querySelectorAll("[data-close]").forEach(b => b.onclick = closeModals);
+  document.querySelectorAll("[data-rename-close]").forEach(b => b.onclick = closeRenameModal);
+  $("btnEditSave").onclick = saveRename;
+  $("editInput").addEventListener("keydown", e => {
+    if(e.key === "Enter"){ e.preventDefault(); saveRename(); }
+  });
+  $("btnEditCh").onclick = () => { if(S.book) openRenameChapter(S.book.id, S.chapterIdx); };
+  $("docSub").onclick = () => { if(S.book) openRenameBook(S.book.id); };
+  document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", e => { if(e.target === m) closeModals(); }));
+  $("btnOpenRead").onclick = () => {
+    const u = $("webUrlInput").value;
+    closeModals();
+    loadWebBook(u, {autoplay:false});
+  };
+  $("webUrlInput").addEventListener("keydown", e => { if(e.key === "Enter") $("btnOpenRead").click(); });
+  $("btnPasteAdd").onclick = () => {
+    const text = $("pasteText").value.trim();
+    if(!text){ toast("Paste some text first."); return; }
+    const title = $("pasteTitle").value.trim() || "Pasted text";
+    const book = addBook(title, splitChapters(text));
+    $("pasteText").value = ""; $("pasteTitle").value = "";
+    closeModals(); openBook(book.id, {resume:false});
+    toast(`Added “${title}” to your library.`);
+  };
+  $("libSearch").oninput = renderLibrary;
+  $("libSort").onchange = renderLibrary;
+  $("libImport").onclick = () => $("fileInput").click();
+  $("libPaste").onclick = () => { closeModals(); openModal("modalPaste"); };
+  $("libWeb").onclick = () => { closeModals(); openModal("modalWeb"); };
+  $("libraryList").addEventListener("click", e => {
+    // 1. Rename controls
+    const renameBookBtn = e.target.closest("[data-rename-book]");
+    if(renameBookBtn){
+      e.stopPropagation();
+      openRenameBook(renameBookBtn.dataset.renameBook);
+      return;
+    }
+    const renameChapterBtn = e.target.closest("[data-rename-chapter]");
+    if(renameChapterBtn){
+      e.preventDefault(); e.stopPropagation();
+      openRenameChapter(renameChapterBtn.dataset.renameChapter, +renameChapterBtn.dataset.chIdx);
+      return;
+    }
+
+    // 2. Delete button
+    const delBtn = e.target.closest("[data-del-book]");
+    if(delBtn){
+      e.stopPropagation();
+      const id = delBtn.dataset.delBook;
+      const idx = library.findIndex(b => b.id === id);
+      if(idx >= 0){
+        const [gone] = library.splice(idx, 1);
+        expandedNovelIds.delete(id);
+        idbDel("t:" + id);
+        saveLibrary(); renderLibrary();
+        toast(`Deleted “${gone.title}”`, {action:"Undo", onAction:() => { library.splice(idx, 0, gone); saveLibrary(); renderLibrary(); }});
+        if(S.book && S.book.id === id){ S.book = null; S.pages = []; renderPage(); }
+      }
+      return;
+    }
+
+    // 2. Open chapter leaf clicked
+    const chapterLeaf = e.target.closest("[data-open-chapter]");
+    if(chapterLeaf){
+      e.stopPropagation();
+      const bookId = chapterLeaf.dataset.openChapter;
+      const chIdx = parseInt(chapterLeaf.dataset.chIdx, 10);
+      closeModals();
+      openBook(bookId, { chapterIdx: chIdx, autoplay: false });
+      return;
+    }
+
+    // 3. Read novel button clicked
+    const openBookBtn = e.target.closest("[data-open-book]");
+    if(openBookBtn){
+      e.stopPropagation();
+      const id = openBookBtn.dataset.openBook;
+      closeModals();
+      openBook(id);
+      return;
+    }
+
+    // 4. Toggle tree node expansion
+    const treeHeader = e.target.closest("[data-toggle-tree]");
+    if(treeHeader){
+      const bookId = treeHeader.dataset.toggleTree;
+      if(expandedNovelIds.has(bookId)){
+        expandedNovelIds.delete(bookId);
+      } else {
+        expandedNovelIds.add(bookId);
+      }
+      renderLibrary();
+      return;
+    }
+  });
+
+  const btnExpandAll = $("libExpandAll");
+  if(btnExpandAll){
+    btnExpandAll.onclick = () => {
+      library.forEach(b => expandedNovelIds.add(b.id));
+      renderLibrary();
+    };
+  }
+  const btnCollapseAll = $("libCollapseAll");
+  if(btnCollapseAll){
+    btnCollapseAll.onclick = () => {
+      expandedNovelIds.clear();
+      renderLibrary();
+    };
+  };
+  $("bookmarksList").addEventListener("click", e => {
+    const item = e.target.closest("[data-id]"); if(!item) return;
+    const id = item.dataset.id;
+    if(e.target.closest("[data-del]")){
+      const idx = bookmarks.findIndex(b => b.id === id);
+      const [gone] = bookmarks.splice(idx, 1);
+      saveBookmarks(); renderBookmarks();
+      toast("Bookmark deleted.", {action:"Undo", onAction:() => { bookmarks.splice(idx, 0, gone); saveBookmarks(); renderBookmarks(); }});
+    } else if(e.target.closest("[data-go]")){
+      const bm = bookmarks.find(b => b.id === id);
+      if(bm) goBookmark(bm);
+    }
+  });
+
+  /* Keyboard shortcuts */
+  document.addEventListener("keydown", e => {
+    const tag = (e.target.tagName || "").toLowerCase();
+    if(tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
+    if(e.key === "Escape"){ closeDrawer(); closeModals(); return; }
+    if(e.code === "Space"){ e.preventDefault(); togglePlay(); }
+    else if(e.key === "ArrowLeft") goToPage(S.pageIdx - 1);
+    else if(e.key === "ArrowRight") goToPage(S.pageIdx + 1);
+    else if(e.key.toLowerCase() === "s") stopPlayback();
+    else if(e.key.toLowerCase() === "b") addBookmark();
+  });
+
+  updatePreview();
+}
+function renderFonts(filter){
+  const q = filter.trim().toLowerCase();
+  const fams = S.allFonts.filter(f => f.toLowerCase().includes(q));
+  $("fontsList").innerHTML = fams.map(f =>
+    `<button class="list-item" data-font="${esc(f)}"><div class="li-main"><b style="font-family:'${esc(f)}'">${esc(f)}</b><span>${esc(f)}</span></div></button>`).join("")
+    || '<p class="hint">No matching fonts.</p>';
+}
+if(document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}

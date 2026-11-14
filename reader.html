@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050505">
+<title>Ultra Pro Reader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400..700&family=Noto+Serif+SC:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<script src="vendor/pdf.min.js"></script>
+<script src="js/pdf-config.js"></script>
+<style>
+:root, [data-theme="dark"]{
+  --bg:#050505; --bg2:#1a1610; --surface:#1f1a13; --surface2:#282118; --overlay:#2f281e;
+  --line:#3c3325; --line2:#52462f;
+  --text:#f0e8d6; --muted:#b4a88f; --faint:#877b64;
+  --amber:#e8a83e; --amber2:#f6c968; --amber-deep:#b97c1c; --amber-dim:#7a5a26;
+  --jade:#3fc98e; --jade-deep:#1e8f63; --cinnabar:#e2604a; --blue:#6aa8e8;
+  --success:#46c98e; --warning:#e8a83e; --danger:#e05252; --info:#6aa8e8;
+  --scrim:rgba(10,7,3,.66); --glow:rgba(232,168,62,.32);
+  --hl-word:rgba(232,168,62,.45); --hl-sent:rgba(232,168,62,.18); --hl-para:rgba(63,201,142,.08);
+  --grain-op:.05; --aurora-a:.15; --aurora-b:.10; --aurora-c:.07;
+  --reader-paper:#211b13;
+  --headerH:66px;
+}
+[data-theme="light"]{
+  --bg:#f2ead9; --bg2:#ece2cd; --surface:#faf4e6; --surface2:#f1e8d4; --overlay:#fffcf3;
+  --line:#dccfb4; --line2:#c4b391;
+  --text:#2d2517; --muted:#6e6148; --faint:#988a6e;
+  --amber:#b97c1c; --amber2:#d99a2b; --amber-deep:#96620f; --amber-dim:#d9c294;
+  --jade:#178a5e; --jade-deep:#0f6b48; --cinnabar:#c2452f; --blue:#2f6db3;
+  --success:#178a5e; --warning:#b97c1c; --danger:#c0392b; --info:#2f6db3;
+  --scrim:rgba(60,45,20,.35); --glow:rgba(185,124,28,.22);
+  --hl-word:rgba(217,154,43,.45); --hl-sent:rgba(217,154,43,.20); --hl-para:rgba(23,138,94,.09);
+  --grain-op:.035; --aurora-a:.20; --aurora-b:.14; --aurora-c:.10;
+  --reader-paper:#fdf8ec;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text);
+  min-height:100vh; min-height:100dvh; overflow-x:hidden; transition:background .4s,color .4s;
+}
+body::before{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;
+  background:
+    radial-gradient(900px 620px at 12% -8%, rgba(232,168,62,var(--aurora-a)), transparent 60%),
+    radial-gradient(820px 700px at 108% 112%, rgba(63,201,142,var(--aurora-b)), transparent 60%),
+    radial-gradient(640px 480px at 86% 12%, rgba(226,96,74,var(--aurora-c)), transparent 62%);
+}
+body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:var(--grain-op);mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+}
+*{scrollbar-width:thin;scrollbar-color:var(--amber-dim) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--amber-dim),var(--amber-deep));border-radius:8px;border:2px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:var(--amber)}
+::selection{background:var(--hl-word)}
+header{
+  position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:12px;
+  padding:12px 20px;border-bottom:1px solid var(--line);
+  background:color-mix(in srgb, var(--bg) 78%, transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  animation:fadeDown .5s ease both;transition:height .35s ease,padding .35s ease,border-width .35s ease,opacity .35s ease;
+}
+.logo{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:22px;flex:none;
+  background:linear-gradient(135deg,var(--surface2),var(--overlay));border:1px solid var(--line2);
+  box-shadow:0 4px 18px var(--glow), inset 0 1px 0 rgba(255,255,255,.06);}
+header h1{font-family:'Literata',serif;font-size:20px;font-weight:600;letter-spacing:.2px;white-space:nowrap}
+header h1 em{font-style:normal;background:linear-gradient(90deg,var(--amber2),var(--amber));-webkit-background-clip:text;background-clip:text;color:transparent}
+header .doc-sub{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40vw}
+header .spacer{flex:1}
+.btn{
+  font:inherit;font-size:13.5px;font-weight:600;color:var(--text);cursor:pointer;
+  background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--line2);
+  border-radius:10px;padding:8px 14px;transition:transform .15s,box-shadow .2s,border-color .2s,background .2s;
+  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+}
+.btn:hover{transform:translateY(-1px);border-color:var(--amber);box-shadow:0 4px 16px var(--glow)}
+.btn:active{transform:translateY(0) scale(.97)}
+.btn.primary{background:linear-gradient(135deg,var(--amber2),var(--amber) 65%,var(--amber-deep));color:#241a06;border-color:transparent}
+.btn.primary:hover{box-shadow:0 6px 22px var(--glow)}
+.btn.jade{border-color:var(--jade-deep);color:var(--jade)}
+.btn.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%, var(--line))}
+.btn.small{padding:5px 10px;font-size:12px;border-radius:8px}
+.btn:disabled{opacity:.4;pointer-events:none}
+.icon-btn{width:38px;height:38px;padding:0;justify-content:center;font-size:16px;border-radius:10px}
+input[type=text],input[type=url],input[type=number],textarea,select{
+  font:inherit;font-size:13.5px;color:var(--text);background:var(--surface2);
+  border:1px solid var(--line2);border-radius:10px;padding:9px 12px;outline:none;width:100%;
+  transition:border-color .2s,box-shadow .2s;
+}
+input:focus,textarea:focus,select:focus{border-color:var(--amber);box-shadow:0 0 0 3px var(--glow)}
+textarea{resize:vertical;min-height:64px;line-height:1.5}
+select{cursor:pointer}
+select option{background:var(--surface);color:var(--text)}
+input[type=range]{accent-color:var(--amber);width:100%;cursor:pointer;height:26px}
+input[type=checkbox]{accent-color:var(--amber);width:16px;height:16px;cursor:pointer}
+.hint{font-size:12px;color:var(--muted);line-height:1.55}
+label.lbl{display:block;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 6px}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.switch{position:relative;display:inline-block;width:40px;height:22px;flex:none}
+.switch input{opacity:0;width:0;height:0;position:absolute}
+.switch span{position:absolute;inset:0;border-radius:22px;background:var(--surface2);border:1px solid var(--line2);transition:.25s;cursor:pointer}
+.switch span::before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:var(--muted);transition:.25s}
+.switch input:checked+span{background:linear-gradient(135deg,var(--amber2),var(--amber-deep));border-color:var(--amber)}
+.switch input:checked+span::before{transform:translateX(18px);background:#fff8ea}
+.switch input:focus-visible+span{outline:2px solid var(--amber);outline-offset:2px}
+main{max-width:980px;margin:0 auto;padding:18px 18px 130px;display:flex;flex-direction:column;gap:14px;min-height:calc(100vh - 130px)}
+.mode-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;animation:fadeUp .5s .05s ease both}
+.seg{display:inline-flex;background:var(--surface);border:1px solid var(--line2);border-radius:12px;padding:3px;gap:3px}
+.seg button{font:inherit;font-size:13px;font-weight:600;color:var(--muted);background:transparent;border:0;border-radius:9px;padding:7px 18px;cursor:pointer;transition:.2s}
+.seg button.active{background:linear-gradient(135deg,var(--amber2),var(--amber-deep));color:#241a06;box-shadow:0 2px 10px var(--glow)}
+.seg button:not(.active):hover{color:var(--text);background:var(--surface2)}
+.url-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap;animation:fadeUp .5s .1s ease both}
+.url-row .nav-group{display:flex;gap:4px}
+.url-row input{flex:1;min-width:180px}
+.chapter-row{display:flex;align-items:center;gap:10px;animation:fadeUp .5s .12s ease both}
+.chapter-row .ch-title{flex:1;text-align:center;font-family:'Literata',serif;font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.auto-row{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);animation:fadeUp .5s .14s ease both}
+.stats-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;font-weight:600;color:var(--amber);animation:fadeUp .5s .16s ease both}
+.stats-row .pg{color:var(--muted)}
+.quick-links{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px}
+.quick-links h3{font-family:'Literata',serif;font-size:16px;margin-bottom:12px}
+.speed-dial{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.speed-dial button{background:var(--surface2);border:1px solid var(--line2);border-radius:12px;padding:14px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font:inherit;font-size:12px;font-weight:600;color:var(--text);transition:.15s}
+.speed-dial button:hover{border-color:var(--amber);transform:translateY(-1px);box-shadow:0 4px 14px var(--glow)}
+.speed-dial .sd-icon{font-size:24px}
+.reader-card{
+  --reading-bg:#050505;--reading-text:#fff;
+  background:var(--reading-bg);border:1px solid var(--line);border-radius:18px;
+  padding:44px 48px;box-shadow:0 18px 50px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04);
+  animation:fadeUp .55s .2s ease both;position:relative;overflow:hidden;
+  scroll-margin-top:calc(var(--headerH,66px) + 64px);
+}
+.reader-card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--amber),var(--jade),var(--cinnabar));opacity:.75}
+#chapterHeading{font-family:'Literata',serif;font-size:24px;font-weight:600;margin-bottom:22px;line-height:1.35;color:var(--reading-text);max-width:72ch;margin-inline:auto}
+#content{font-family:'Literata',Georgia,serif;font-size:19px;line-height:1.88;color:var(--reading-text);max-width:72ch;margin-inline:auto}
+#content p{margin:0 0 1.15em;border-left:3px solid transparent;padding-left:10px;margin-left:-13px;border-radius:4px;transition:background .25s,border-color .25s}
+#content p:last-child{margin-bottom:0}
+#content .sent{border-radius:4px;transition:background .15s ease, box-shadow .15s ease;padding:2px 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+#content { cursor: text; }
+#content p { cursor: pointer; }
+#content .w{border-radius:4px;padding:1px 2px;margin:0;transition:background .12s;cursor:pointer}
+#content .w:hover{background:color-mix(in srgb, var(--amber) 22%, transparent);border-radius:3px}
+#content .hl-w{background:var(--hl-word);box-shadow:0 0 0 2px var(--hl-word);border-radius:3px;font-weight:600}
+#content .hl-s{background:var(--hl-sent);box-shadow:0 0 0 3px var(--hl-sent);border-radius:4px}
+#content p.hl-p{background:var(--hl-para);border-left-color:var(--jade)}
+/* Focus while reading: paragraphs wait their turn slightly dimmed, the
+   narrated paragraph stays at full strength (plays only while speaking) */
+body.reading-active #content p{opacity:.58;transition:opacity .4s ease}
+body.reading-active #content p.hl-p,
+body.reading-active #content p.cur-p{opacity:1}
+body.reading-active #content .empty{opacity:.4}
+#content .empty{color:var(--reading-text);opacity:.65;font-style:italic}
+.reader-color-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.reader-color-pair input[type=color]{width:100%;height:38px;padding:3px;border:1px solid var(--line2);border-radius:8px;background:var(--surface2);cursor:pointer}
+.transport{
+  position:fixed;bottom:16px;left:50%;translate:-50% 0;z-index:40;
+  display:flex;align-items:center;gap:6px;padding:9px 12px;border-radius:999px;
+  background:color-mix(in srgb, var(--overlay) 86%, transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid var(--line2);box-shadow:0 14px 44px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03) inset;
+  animation:fadeUp .6s .3s ease both;
+}
+.tbtn{width:42px;height:42px;border-radius:50%;border:1px solid transparent;background:transparent;color:var(--text);font-size:16px;cursor:pointer;display:grid;place-items:center;transition:.18s;flex:none}
+.tbtn:hover{background:var(--surface2);border-color:var(--line2);transform:translateY(-2px)}
+.tbtn:active{transform:scale(.92)}
+.tbtn.play{width:56px;height:56px;font-size:21px;background:linear-gradient(135deg,var(--amber2),var(--amber) 60%,var(--amber-deep));color:#241a06;box-shadow:0 6px 24px var(--glow);border:0}
+.tbtn.play:hover{transform:translateY(-2px) scale(1.04)}
+.tbtn.play.playing{animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 6px 24px var(--glow)}50%{box-shadow:0 6px 34px var(--glow),0 0 0 9px rgba(232,168,62,.09)}}
+footer{max-width:980px;margin:0 auto;padding:0 18px 26px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.status{margin-left:auto;font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.status b{color:var(--jade);font-weight:600}
+/* ---------- Progress feedback ---------- */
+.progpop{position:fixed;top:70px;left:50%;translate:-50% 0;z-index:120;width:min(360px,calc(100vw - 24px));
+  background:var(--overlay);border:1px solid var(--line2);border-radius:12px;padding:10px 12px;
+  box-shadow:0 14px 40px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:7px;
+  opacity:0;pointer-events:none;transform:translateY(-10px);transition:opacity .22s, transform .22s}
+.progpop.on{opacity:1;transform:none}
+.prog-top{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.prog-top b{flex:1;min-width:0;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prog-pct{color:var(--amber);font-weight:700;font-variant-numeric:tabular-nums}
+.prog-track{height:6px;border-radius:99px;background:color-mix(in srgb,var(--line2) 45%, transparent);overflow:hidden}
+.prog-fill{height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--amber),var(--jade));transition:width .3s ease}
+.progpop.indet .prog-fill{width:34%;animation:progIndet 1.15s ease-in-out infinite}
+@keyframes progIndet{from{transform:translateX(-115%)}to{transform:translateX(345%)}}
+.mini-track{height:5px;border-radius:99px;background:color-mix(in srgb,var(--line2) 40%, transparent);overflow:hidden}
+.mini-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--amber),var(--jade));transition:width .3s ease}
+.book-prog{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:10.5px;color:var(--muted)}
+.book-prog .mini-track{flex:1}
+.book-prog span{flex:none;font-variant-numeric:tabular-nums}
+.progress-row{
+  position:sticky;top:calc(var(--headerH,66px) + 48px);z-index:45;
+  display:flex;flex-direction:column;gap:6px;padding:8px 12px;border-radius:12px;
+  background:color-mix(in srgb, var(--surface) 88%, transparent);
+  border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.25);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  animation:fadeUp .5s .18s ease both}
+.rprog{width:100%;min-width:0;display:grid;grid-template-columns:minmax(120px,1fr) minmax(80px,2fr);align-items:center;gap:10px}
+.rprog .rp-top{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted)}
+.rprog .rp-top b{color:var(--amber);font-variant-numeric:tabular-nums}
+.list-item .mini-track{margin-top:6px}
+@media (max-width:520px){ .progress-row{gap:6px;padding:7px 9px} .rprog{grid-template-columns:minmax(105px,1fr) minmax(65px,1.4fr);gap:8px} .progpop{top:62px} }
+/* ---------- Rename controls ---------- */
+.tree-leaf-edit{margin-left:2px;flex:none;width:24px;height:24px;border-radius:7px;border:1px solid transparent;
+  background:transparent;color:var(--faint);font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:.15s}
+.tree-leaf-edit:hover,.tree-leaf-edit:focus-visible{color:var(--amber);background:color-mix(in srgb,var(--amber) 14%,transparent);border-color:var(--amber-dim)}
+.li-edit{flex:none;width:26px;height:26px;border-radius:7px;border:1px solid transparent;background:transparent;
+  color:var(--faint);font-size:13px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:.15s}
+.li-edit:hover{color:var(--amber);background:var(--surface);border-color:var(--line2)}
+.ch-edit{width:30px;padding:5px 0;text-align:center;flex:none}
+.eq{display:none;align-items:flex-end;gap:2px;height:14px}
+.eq.on{display:inline-flex}
+.eq i{width:3px;background:var(--amber);border-radius:2px;animation:eq .9s ease-in-out infinite}
+.eq i:nth-child(2){animation-delay:.22s}.eq i:nth-child(3){animation-delay:.44s}
+@keyframes eq{0%,100%{height:4px}50%{height:14px}}
+#scrim{position:fixed;inset:0;background:var(--scrim);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;transition:opacity .3s}
+#scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(380px,100vw);z-index:96;background:var(--surface);border-left:1px solid var(--line2);box-shadow:-20px 0 60px rgba(0,0,0,.4);transform:translateX(105%);transition:transform .34s cubic-bezier(.32,.9,.3,1);display:flex;flex-direction:column}
+.drawer.open{transform:translateX(0)}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 10px}
+.drawer-head h2{font-size:13px;font-weight:700;letter-spacing:.22em;color:var(--amber)}
+.x{width:32px;height:32px;border-radius:8px;border:1px solid var(--line2);background:var(--surface2);color:var(--muted);font-size:16px;cursor:pointer;transition:.18s}
+.x:hover{color:var(--danger);border-color:var(--danger);transform:rotate(90deg)}
+.drawer .seg{margin:0 18px 4px;display:flex}
+.drawer .seg button{flex:1;padding:7px 6px}
+.drawer-body{flex:1;overflow-y:auto;padding:14px 18px 30px;display:flex;flex-direction:column;gap:16px}
+.dpanel{display:flex;flex-direction:column;gap:15px}
+.field-row{display:flex;gap:8px;align-items:center}
+.rate-presets{display:flex;gap:5px;flex-wrap:wrap}
+/* Piper AI voices grid */
+.piper-filter{display:flex;gap:5px;margin:7px 0 6px}
+.piper-filter input,.piper-filter select{background:var(--surface);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:6px 9px;font:inherit;font-size:12.5px}
+.piper-filter input{flex:1;min-width:0}
+.piper-filter select{flex:1.6;min-width:0}
+.piper-grid{display:flex;flex-direction:column;gap:5px;max-height:300px;overflow-y:auto;padding-right:2px}
+.piper-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);cursor:pointer;transition:border-color .15s, background .15s}
+.piper-row:hover{border-color:var(--line2)}
+.piper-row.active{border-color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,var(--surface))}
+.piper-row .pv-main{min-width:0;flex:1}
+.piper-row .pv-main b{display:block;font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.piper-row .pv-main span{font-size:10.5px;color:var(--muted)}
+.piper-row .pv-g{font-size:15px;color:var(--amber2);flex:0 0 auto}
+.piper-row .pv-btn{flex:0 0 auto;background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--muted);font-size:11px;padding:4px 8px;cursor:pointer}
+.piper-row .pv-btn:hover{border-color:var(--amber);color:var(--amber2)}
+.piper-row .pv-btn.done{color:#7bc47f}
+.piper-row .pv-btn.busy{opacity:.6;pointer-events:none}
+.rate-presets button{font:inherit;font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:7px;border:1px solid var(--line2);background:var(--surface2);color:var(--muted);cursor:pointer;transition:.15s}
+.rate-presets button:hover,.rate-presets button.active{color:var(--amber);border-color:var(--amber)}
+.val-badge{font-size:12px;font-weight:700;color:var(--amber);background:var(--surface2);border:1px solid var(--line2);border-radius:7px;padding:4px 9px;white-space:nowrap}
+.check-row{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--text);cursor:pointer}
+.divider{height:1px;background:linear-gradient(90deg,transparent,var(--line2),transparent);margin:4px 0}
+.list{display:flex;flex-direction:column;gap:7px}
+.list-item{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--line);border-radius:11px;padding:10px 12px;transition:.18s;text-align:left;width:100%;font:inherit;color:var(--text);cursor:pointer}
+.list-item:hover{border-color:var(--amber);transform:translateX(2px)}
+.list-item.active{border-color:var(--amber);background:color-mix(in srgb,var(--amber) 10%,var(--surface2));box-shadow:0 0 0 1px var(--amber) inset}
+.list-item .li-main{flex:1;min-width:0}
+.list-item b{display:block;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list-item span{display:block;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+.badge{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--jade);border:1px solid var(--jade-deep);border-radius:5px;padding:2px 6px;flex:none}
+.badge.new{color:#241a06;background:linear-gradient(135deg,var(--amber2),var(--amber));border:0}
+.fix-head{display:flex;align-items:center;gap:9px}
+.fix-head h4{font-size:13.5px;font-weight:700;flex:1}
+.skip-chips{display:flex;flex-wrap:wrap;gap:5px}
+.skip-chips button{font:inherit;font-size:12px;padding:4px 9px;border-radius:7px;border:1px solid var(--line2);background:var(--surface2);color:var(--muted);cursor:pointer;transition:.15s}
+.skip-chips button:hover{color:var(--cinnabar);border-color:var(--cinnabar)}
+.gpanel{border:1px solid var(--line2);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:9px;background:var(--bg2)}
+.gchips{display:flex;flex-wrap:wrap;gap:6px}
+.gchip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 9px;border-radius:999px;border:1px solid var(--line2);background:var(--surface2)}
+.gchip i{font-style:normal;color:var(--amber)}
+.gchip button{font:inherit;border:0;background:none;color:var(--muted);cursor:pointer;padding:0 0 0 2px}
+.gchip button:hover{color:var(--cinnabar)}
+.grow{display:flex;gap:6px;flex-wrap:wrap}
+.grow input{flex:1 1 140px;min-width:0;font:inherit;font-size:13px;padding:9px 11px;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);color:var(--text)}
+.gbtn{font:inherit;font-size:12.5px;font-weight:600;padding:8px 12px;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);color:var(--text);cursor:pointer}
+.gbtn.on{background:var(--amber);color:#241a06;border-color:var(--amber)}
+.rules-list{display:flex;flex-direction:column;gap:6px;max-height:264px;overflow-y:auto;padding-right:4px}
+.rule{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:7px 10px;transition:.15s}
+.rule:hover{border-color:var(--line2)}
+.rule.off{opacity:.45}
+.rule .mini{width:30px;height:17px}
+.rule .mini span::before{width:11px;height:11px}
+.rule .mini input:checked+span::before{transform:translateX(13px)}
+.rule-text{flex:1;display:flex;align-items:center;gap:7px;background:none;border:0;color:var(--text);font:inherit;font-size:13px;cursor:pointer;min-width:0;text-align:left;padding:2px 0}
+.rule-text b{font-weight:700;color:var(--amber2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rule-text .arrow{color:var(--faint);flex:none}
+.rule-text .say{color:var(--jade);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rule-del{width:24px;height:24px;border-radius:6px;border:0;background:transparent;color:var(--faint);font-size:14px;cursor:pointer;flex:none;transition:.15s}
+.rule-del:hover{color:var(--danger);background:color-mix(in srgb,var(--danger) 14%,transparent)}
+.rule-add{display:flex;gap:6px;align-items:center}
+.rule-add input{min-width:0}
+.rule-add .arrow{color:var(--amber);font-weight:700;flex:none}
+.rule-count{font-size:11.5px;color:var(--faint)}
+.test-box{background:var(--surface2);border:1px solid var(--line2);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:9px}
+.test-box .preview{font-size:12.5px;line-height:1.6;color:var(--muted);border-top:1px dashed var(--line2);padding-top:9px}
+.test-box .preview b{color:var(--jade);font-weight:600}
+.modal{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;padding:18px}
+.modal-panel{width:min(560px,100%);max-height:86vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line2);border-radius:18px;box-shadow:0 30px 90px rgba(0,0,0,.5);animation:pop .28s cubic-bezier(.3,1.4,.5,1) both;overflow:hidden}
+@keyframes pop{from{transform:scale(.92) translateY(14px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:17px 20px;border-bottom:1px solid var(--line)}
+.modal-head h3{font-family:'Literata',serif;font-size:18px}
+.modal-body{padding:18px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:13px}
+.lib-toolbar{display:flex;gap:8px;flex-wrap:wrap}
+.lib-toolbar input{flex:1;min-width:140px}
+.lib-toolbar select{width:auto}
+#toasts{position:fixed;left:16px;bottom:96px;z-index:120;display:flex;flex-direction:column;gap:8px;max-width:min(360px,calc(100vw - 32px))}
+.toast{display:flex;align-items:center;gap:12px;background:var(--overlay);border:1px solid var(--line2);border-left:3px solid var(--amber);border-radius:11px;padding:11px 14px;font-size:13px;box-shadow:0 12px 34px rgba(0,0,0,.4);animation:toastIn .3s cubic-bezier(.3,1.3,.5,1) both}
+.toast.out{animation:toastOut .3s ease both}
+.toast button{font:inherit;font-size:12px;font-weight:700;color:var(--amber);background:none;border:0;cursor:pointer;flex:none}
+.toast button:hover{text-decoration:underline}
+@keyframes toastIn{from{transform:translateX(-24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes toastOut{to{transform:translateX(-24px);opacity:0}}
+@keyframes fadeDown{from{transform:translateY(-14px);opacity:0}to{transform:none;opacity:1}}
+@keyframes fadeUp{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+#speechWarning{background:linear-gradient(90deg,var(--cinnabar),#b03a28);color:#fff;text-align:center;font-size:13px;font-weight:600;padding:9px 14px}
+
+/* ===== Website pane (mini browser) ===== */
+#websitePane{display:flex;flex-direction:column;gap:10px;animation:fadeUp .4s ease both}
+.tab-strip{display:flex;gap:4px;padding:6px 6px 0;overflow-x:auto;background:var(--surface);border:1px solid var(--line2);border-radius:14px 14px 0 0;scrollbar-width:thin}
+.tab-strip::-webkit-scrollbar{height:4px}
+.tab{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:var(--surface2);border:1px solid var(--line2);border-radius:8px 8px 0 0;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;max-width:190px;flex:none;transition:.15s}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--overlay);color:var(--text);border-color:var(--amber)}
+.tab .tab-title{overflow:hidden;text-overflow:ellipsis;max-width:140px}
+.tab .tab-close{padding:0 4px;color:var(--faint);cursor:pointer;border:0;background:none;font-size:14px}
+.tab .tab-close:hover{color:var(--danger)}
+.tab .tab-add{padding:6px 10px;background:var(--surface2);border:1px solid var(--line2);border-radius:8px;font-size:12px;color:var(--muted);cursor:pointer;flex:none}
+.browser-stage{position:relative;height:68vh;min-height:380px;background:#fff;border:1px solid var(--line2);border-radius:0 0 14px 14px;overflow:hidden}
+.browser-stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}
+.browser-start{position:absolute;inset:0;overflow-y:auto;padding:16px;background:var(--reader-paper)}
+.web-actions{display:flex;gap:6px;flex-wrap:wrap;animation:fadeUp .5s .1s ease both}
+.web-actions .btn{padding:6px 11px;font-size:12px}
+#webMessage{animation:fadeUp .5s .1s ease both}
+
+@media (max-width:720px){
+  header{padding:10px 14px}
+  header h1{font-size:16px}
+  header .doc-sub{max-width:30vw}
+  main{padding:14px 12px 120px}
+  .reader-card{padding:26px 20px}
+  #content{font-size:17px}
+  .transport{bottom:0;left:0;right:0;translate:none;transform:none;border-radius:0;justify-content:space-between;gap:2px;padding:5px 6px calc(5px + env(safe-area-inset-bottom,0px));border-left:0;border-right:0;border-bottom:0}
+  .tbtn{width:auto;height:34px;font-size:13px;flex:1 1 0;min-width:0}
+  .tbtn.play{width:auto;height:44px;flex:1.15 1 0;font-size:18px}
+  #toasts{bottom:64px}
+  .url-row .btn{padding:8px 10px;font-size:12px}
+  .drawer{width:100vw}
+  .browser-stage{height:58vh;min-height:280px}
+  .speed-dial{grid-template-columns:repeat(2,1fr)}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+  html{scroll-behavior:auto}
+}
+
+/* Directory tree view for Library */
+.tree-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: inherit;
+}
+.tree-node {
+  background: var(--surface2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color .2s, box-shadow .2s;
+}
+.tree-node:hover {
+  border-color: var(--line2);
+}
+.tree-node.is-open {
+  border-color: var(--amber-dim);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+}
+.tree-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  user-select: none;
+  background: color-mix(in srgb, var(--surface) 40%, var(--surface2));
+  transition: background .18s;
+}
+.tree-header:hover {
+  background: color-mix(in srgb, var(--surface) 10%, var(--surface2));
+}
+.tree-expander {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  transition: transform .2s ease, color .18s, border-color .18s;
+  flex: none;
+}
+.tree-node.is-open > .tree-header .tree-expander {
+  transform: rotate(90deg);
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.tree-folder-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex: none;
+}
+.tree-info {
+  flex: 1;
+  min-width: 0;
+}
+.tree-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.tree-branch {
+  border-left: 2px solid color-mix(in srgb, var(--amber) 35%, var(--line2));
+  margin: 4px 10px 10px 22px;
+  padding: 4px 0 2px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tree-leaf {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 11px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all .16s ease;
+  text-align: left;
+  width: 100%;
+}
+.tree-leaf:hover {
+  background: var(--surface2);
+  border-color: var(--amber);
+  transform: translateX(3px);
+  color: var(--amber2);
+}
+.tree-leaf.active {
+  border-color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 14%, var(--surface));
+  color: var(--amber2);
+  font-weight: 600;
+}
+.tree-leaf-icon {
+  font-size: 13px;
+  color: var(--muted);
+  flex: none;
+}
+.tree-leaf.active .tree-leaf-icon {
+  color: var(--amber);
+}
+.tree-leaf-num {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--amber);
+  background: var(--surface2);
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  padding: 1px 6px;
+  flex: none;
+}
+.tree-leaf-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-leaf-words {
+  font-size: 11px;
+  color: var(--muted);
+  flex: none;
+}
+.tree-expand-all-btn {
+  font-size: 11.5px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--surface2);
+  border: 1px solid var(--line2);
+  color: var(--muted);
+  cursor: pointer;
+}
+.tree-expand-all-btn:hover {
+  color: var(--text);
+  border-color: var(--amber);
+}
+
+
+/* ---------- Orb mode: the dock folds into a sphere that docks to the screen edge, away from the text ---------- */
+.transport{transition:width .5s cubic-bezier(.65,0,.25,1),left .5s cubic-bezier(.65,0,.25,1),translate .5s cubic-bezier(.65,0,.25,1),top .5s cubic-bezier(.65,0,.25,1),bottom .5s,padding .5s,border-radius .5s,background .4s,box-shadow .4s,border-color .4s}
+.transport .tbtn{transition:width .4s cubic-bezier(.65,0,.25,1),flex .4s cubic-bezier(.65,0,.25,1),opacity .3s,transform .4s cubic-bezier(.65,0,.25,1),margin .4s,border-width .4s,background .18s}
+.transport.folding{overflow:visible}
+.transport.folding .tbtn:not(.play){width:0!important;min-width:0!important;flex:0 0 0!important;margin:0 -3px;border-width:0;opacity:0;transform:scale(.2) rotate(-90deg);pointer-events:none;overflow:hidden}
+#transport.orb{position:fixed;bottom:auto;translate:0 0;width:56px!important;height:56px;padding:0;gap:0;border-radius:50%;justify-content:center;--gap:44px;touch-action:none;
+  background:transparent;border-color:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;animation:none;z-index:60}
+#transport.orb.dragging{transition:none!important}
+#transport.orb.dragging .tbtn.play{transform:scale(1.08)}
+#transport.orb::before{content:"";position:absolute;inset:-1px;border-radius:50%;border:1px dashed color-mix(in srgb,var(--amber) 60%,transparent);animation:orbSpin 16s linear infinite;pointer-events:none}
+#transport.orb::after{content:"";position:absolute;inset:-12px;border-radius:50%;background:radial-gradient(circle,var(--glow),transparent 68%);opacity:.7;animation:orbBreath 3.2s ease-in-out infinite;pointer-events:none;z-index:-1}
+#transport.orb .tbtn.play{width:44px;height:44px;flex:none;font-size:17px;margin:0;
+  background:radial-gradient(circle at 32% 26%,#fff6dc,var(--amber2) 30%,var(--amber) 62%,var(--amber-deep));
+  box-shadow:inset -5px -7px 12px rgba(120,70,0,.35),0 6px 22px var(--glow);animation:orbFloat 3.2s ease-in-out infinite}
+/* Closed: the other buttons hide inside the sphere */
+#transport.orb .tbtn:not(.play){position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;flex:none;border-width:1px;opacity:0;pointer-events:none;
+  transform:translate(0,0) scale(.2);background:color-mix(in srgb,var(--overlay) 92%,transparent);border-color:var(--line2);box-shadow:0 8px 22px rgba(0,0,0,.4);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+/* Slot order + stagger for the fan-out (play stays in the sphere centre) */
+#transport.orb .tbtn:nth-child(1){--i:1;--d:0s}
+#transport.orb .tbtn:nth-child(2){--i:2;--d:.03s}
+#transport.orb .tbtn:nth-child(3){--i:3;--d:.06s}
+#transport.orb .tbtn:nth-child(4){--i:4;--d:.09s}
+#transport.orb .tbtn:nth-child(6){--i:5;--d:.12s}
+#transport.orb .tbtn:nth-child(7){--i:6;--d:.15s}
+#transport.orb .tbtn:nth-child(8){--i:7;--d:.18s}
+#transport.orb .tbtn:nth-child(9){--i:8;--d:.21s}
+#transport.orb .tbtn:not(.play){--y:calc((var(--i,4) - 3.5)*var(--gap))}
+/* Open: a single tap fans the buttons out beside the sphere as a labelled menu bar riding a line */
+#transport.orb.open::before{animation-play-state:paused;border-style:solid;opacity:.35}
+#transport .orb-rail,#transport .orb-link{position:absolute;opacity:0;pointer-events:none;transition:opacity .3s .08s;z-index:-1}
+#transport .orb-rail{top:50%;width:1px;height:calc(var(--gap,44px)*8 - 12px);transform:translateY(-50%);
+  background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--amber) 55%,transparent) 16%,color-mix(in srgb,var(--amber) 55%,transparent) 84%,transparent)}
+#transport .orb-link{top:50%;width:38px;height:1px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--amber) 55%,transparent),transparent)}
+#transport.orb.side-r .orb-rail{right:64px}
+#transport.orb.side-l .orb-rail{left:64px}
+#transport.orb.side-r .orb-link{right:28px}
+#transport.orb.side-l .orb-link{left:28px;transform:scaleX(-1)}
+#transport.orb.open .orb-rail,#transport.orb.open .orb-link{opacity:.9}
+#transport.orb.open .tbtn:not(.play){opacity:1;pointer-events:auto;top:50%;margin:-17px 0 0 0;
+  width:auto;min-width:0;height:34px;border-radius:999px;display:flex;align-items:center;gap:6px;padding:0 11px 0 10px;font-size:15px;white-space:nowrap;
+  transform:translateY(var(--y)) scale(1);transition-delay:var(--d,0s)}
+#transport.orb.side-r.open .tbtn:not(.play){left:auto;right:64px}
+#transport.orb.side-l.open .tbtn:not(.play){right:auto;left:64px}
+#transport.orb .tbtn:not(.play)::after{content:attr(data-label);font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+#transport.orb.open .tbtn:not(.play):hover,#transport.orb.open .tbtn:not(.play):active{transform:translateY(var(--y)) scale(1.05);color:var(--amber2);border-color:var(--amber)}
+#transport.orb.open .tbtn:not(.play):hover::after,#transport.orb.open .tbtn:not(.play):active::after{color:var(--amber2)}
+@media (max-height:600px){#transport.orb{--gap:36px}}
+@keyframes orbSpin{to{transform:rotate(360deg)}}
+@keyframes orbBreath{0%,100%{transform:scale(.92);opacity:.45}50%{transform:scale(1.08);opacity:.85}}
+@keyframes orbFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px) scale(1.03)}}
+@media (prefers-reduced-motion:reduce){#transport.orb::before,#transport.orb::after,#transport.orb .tbtn.play{animation:none}}
+
+/* ---------- Reading HUD: title, chapter, time & page stay visible in every mode ---------- */
+#readingHud{position:fixed;top:calc(var(--headerH,66px) + 8px);left:50%;translate:-50% 0;z-index:55;display:flex;align-items:center;gap:7px;max-width:min(92vw,720px);
+  padding:6px 14px;border-radius:999px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;
+  background:color-mix(in srgb,var(--overlay) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line2);box-shadow:0 8px 26px rgba(0,0,0,.35);animation:fadeDown .5s .1s ease both}
+#readingHud[hidden]{display:none}
+.hud-title{font-weight:700;color:var(--amber2);overflow:hidden;text-overflow:ellipsis;max-width:32vw}
+.hud-ch{overflow:hidden;text-overflow:ellipsis;max-width:24vw}
+.hud-right{display:flex;align-items:center;gap:7px;flex:none}
+#hudTime,#hudPage{font-weight:600;color:var(--muted)}
+.hud-sep{opacity:.45}
+body.cinema #readingHud{background:color-mix(in srgb,#000 74%,transparent);border-color:color-mix(in srgb,var(--amber) 28%,transparent);box-shadow:0 8px 26px rgba(0,0,0,.6)}
+body.pip-window #readingHud{top:10px}
+/* Progress strip below the HUD */
+#hudProgress{position:fixed;top:calc(var(--headerH,66px) + 46px);left:50%;translate:-50% 0;z-index:55;display:flex;flex-direction:column;gap:6px;align-items:stretch;width:min(92vw,420px);
+  padding:8px 12px;border-radius:14px;background:color-mix(in srgb,var(--overlay) 94%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line2);box-shadow:0 8px 26px rgba(0,0,0,.35)}
+#hudProgress[hidden]{display:none}
+.hud-pr{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);flex:1;min-width:0}
+.hud-pr b{font-size:10.5px;color:var(--amber2);flex:none}
+.hud-track{flex:1;height:4px;border-radius:99px;background:color-mix(in srgb,var(--text) 16%,transparent);overflow:hidden;min-width:52px}
+.hud-fill{height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#7fd7a8,var(--jade));transition:width .4s ease}
+.hud-fill.ch{background:linear-gradient(90deg,var(--amber2),var(--amber))}
+body.cinema #hudProgress{background:color-mix(in srgb,#000 74%,transparent);border-color:color-mix(in srgb,var(--amber) 28%,transparent);box-shadow:0 8px 26px rgba(0,0,0,.6)}
+body.pip-window #hudProgress{top:44px}
+/* While a book is open, keep the page content clear of the fixed HUD + progress strip
+   so the tabs and controls behind them stay visible at the top of the page. */
+body.book-open main{padding-top:84px}
+body.reading-active{--headerH:0px}
+body.reading-active header{height:0;min-height:0;padding-top:0;padding-bottom:0;border-bottom-width:0;opacity:0;overflow:hidden;pointer-events:none;animation:none}
+body.reading-active #readingHud{top:8px}
+body.reading-active.book-open main{padding-top:48px}
+body.reading-active .progress-row{top:48px}
+
+/* ---------- Reading environment: cinema lights-off, full screen, pop-out ---------- */
+header,.mode-row,#chapterRow,#autoRow,#statsRow,#progressRow,#cinemaRow,footer{transition:opacity .5s ease,filter .5s ease}
+body.cinema{background:#060504}
+body.cinema header,body.cinema .mode-row,body.cinema #chapterRow,body.cinema #autoRow,body.cinema #statsRow,body.cinema #progressRow,body.cinema #cinemaRow,body.cinema footer{opacity:.13;filter:saturate(.35);pointer-events:none}
+body.reading-active header{transition:height .35s ease,padding .35s ease,border-width .35s ease,opacity .35s ease}
+body.cinema.reading-active header{opacity:0}
+body.cinema .reader-card{border-color:color-mix(in srgb,var(--amber) 26%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--amber) 10%,transparent),0 30px 90px rgba(0,0,0,.85)}
+.cinema-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cinema-auto{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);margin-left:auto;cursor:pointer;user-select:none}
+.btn.active{border-color:var(--amber);color:var(--amber2);background:color-mix(in srgb,var(--amber) 12%,var(--surface))}
+#cinemaBar{position:fixed;top:calc(var(--headerH,66px) + 92px);left:50%;translate:-50% 0;z-index:56;display:flex;gap:6px;padding:5px;border-radius:999px;
+  background:color-mix(in srgb,var(--overlay) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line2);box-shadow:0 10px 30px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .35s,translate .35s}
+body.cinema #cinemaBar{opacity:1;pointer-events:auto}
+body.cinema.cinema-idle #cinemaBar{opacity:0;pointer-events:none}
+#cinemaBar .btn{font-size:12px;padding:5px 11px;border-radius:999px}
+/* The pop-out reading window mirrors the reader, resizable to any size */
+body.pip-window{margin:0;padding:14px;min-height:100vh}
+body.pip-window .reader-card{margin:54px auto 96px;max-width:900px;width:calc(100% - 28px)}
+.pip-dock{position:fixed;bottom:14px;left:50%;translate:-50% 0;display:flex;align-items:center;gap:6px;padding:9px 12px;border-radius:999px;z-index:60;
+  background:color-mix(in srgb,var(--overlay) 86%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid var(--line2);box-shadow:0 14px 44px rgba(0,0,0,.4)}
+.pip-dock .tbtn{width:42px;height:42px;border-radius:50%;border:1px solid transparent;background:transparent;color:var(--text);font-size:16px;cursor:pointer;display:grid;place-items:center;flex:none}
+.pip-dock .tbtn:hover{background:var(--surface2);border-color:var(--line2)}
+.pip-dock .tbtn.play{width:56px;height:56px;font-size:21px;background:linear-gradient(135deg,var(--amber2),var(--amber) 60%,var(--amber-deep));color:#241a06;box-shadow:0 6px 24px var(--glow);border:0}
+
+</style>
+</head>
+<body data-theme="dark">
+
+<div id="speechWarning" hidden>Speech synthesis is not available in this browser. Try Chrome or Edge.</div>
+
+<div id="progPop" class="progpop" aria-live="polite">
+  <div class="prog-top"><b id="progLabel">Working…</b><span class="prog-pct" id="progPct"></span></div>
+  <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+</div>
+
+<!-- Always-on reading HUD: title, chapter, time left and page progress stay visible in every mode -->
+<div id="readingHud" hidden>
+  <span class="hud-title" id="hudTitle">—</span>
+  <span class="hud-sep">·</span>
+  <span class="hud-ch" id="hudCh">Chapter</span>
+  <span class="hud-right"><span id="hudTime">About 0 min left</span><span class="hud-sep">·</span><span id="hudPage">Page 1 / 1</span></span>
+</div>
+
+<!-- Always-on progress strip: book & chapter bars ride right under the HUD -->
+<div id="hudProgress" hidden>
+  <div class="hud-pr"><span>Book</span><div class="hud-track"><div class="hud-fill" id="hudBookFill"></div></div><b id="hudBookPct">0%</b></div>
+  <div class="hud-pr"><span>Chapter</span><div class="hud-track"><div class="hud-fill ch" id="hudChFill"></div></div><b id="hudChPct">0%</b></div>
+</div>
+
+<header>
+  <div class="logo">📚</div>
+  <div style="min-width:0">
+    <h1>Ultra <em>Pro</em> Reader</h1>
+    <div class="doc-sub" id="docSub">Library</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn" id="btnLibrary">📚 Library</button>
+</header>
+
+<main>
+  <div class="mode-row">
+    <button class="btn icon-btn" id="btnOpenWeb" title="Open web page">🌐</button>
+    <button class="btn icon-btn" id="btnPaste" title="Paste text">📋</button>
+    <button class="btn icon-btn" id="btnOpenFile" title="Open file (.txt, .md, .html, .epub, .pdf)">📂</button>
+    <div class="seg" role="tablist">
+      <button id="tabReader" class="active" role="tab">Reader</button>
+      <button id="tabWebsite" role="tab">Website</button>
+    </div>
+  </div>
+
+  <!-- Reader pane -->
+  <div id="readerPane">
+    <div class="chapter-row" id="chapterRow" hidden>
+      <button class="btn small" id="btnPrevCh">‹ Chapter</button>
+      <div class="ch-title" id="chTitle">Chapter</div>
+      <button class="btn small ch-edit" id="btnEditCh" title="Rename this chapter" aria-label="Rename this chapter">✎</button>
+      <button class="btn small" id="btnNextCh">Chapter ›</button>
+    </div>
+    <label class="auto-row" id="autoRow">
+      <input type="checkbox" id="autoContinue" checked>
+      Auto-continue to the next chapter when finished
+    </label>
+    <div class="stats-row" id="statsRow">
+      <span id="timeLeft">About 0 min left</span>
+      <span class="pg" id="pageInfo">Page 1 / 1</span>
+    </div>
+    <div class="cinema-row" id="cinemaRow">
+      <button class="btn small" id="btnCineTab" title="Lights-off reading in this tab">🕯 Lights off</button>
+      <button class="btn small" id="btnCineFull" title="Reading environment across the full screen">⛶ Full screen</button>
+      <button class="btn small" id="btnCinePip" title="Reading environment in a resizable pop-out window that stays on top">⧉ Pop-out</button>
+      <label class="cinema-auto"><input type="checkbox" id="cinemaAuto" checked> Auto with play</label>
+    </div>
+    <div class="progress-row" id="progressRow" hidden>
+      <div class="rprog">
+        <div class="rp-top"><span>Book progress</span><b id="bookPct">0%</b></div>
+        <div class="mini-track"><div class="mini-fill" id="bookFill"></div></div>
+      </div>
+      <div class="rprog">
+        <div class="rp-top"><span>Chapter progress</span><b id="chPct">0%</b></div>
+        <div class="mini-track"><div class="mini-fill" id="chFill"></div></div>
+      </div>
+    </div>
+    <div class="reader-card" id="readerCard">
+      <h2 id="chapterHeading"></h2>
+      <div id="content"></div>
+    </div>
+  </div>
+
+  <!-- Website pane (mini browser) -->
+  <div id="websitePane" hidden>
+    <div class="tab-strip" id="tabStrip"></div>
+    <div class="url-row">
+      <div class="nav-group">
+        <button class="btn icon-btn" id="btnWebBack" title="Back">←</button>
+        <button class="btn icon-btn" id="btnWebFwd" title="Forward">→</button>
+        <button class="btn icon-btn" id="btnWebReload" title="Reload">⟳</button>
+        <button class="btn icon-btn" id="btnWebHome" title="Start page">⌂</button>
+      </div>
+      <input type="text" id="urlInput" placeholder="Search or enter web address…" spellcheck="false" autocomplete="off">
+      <button class="btn primary" id="btnGo">Go</button>
+    </div>
+    <div class="web-actions">
+      <button class="btn" id="btnWebMode" title="Toggle reader / live view">📖 Reader view</button>
+      <button class="btn jade" id="btnReadPage">🔊 Read page</button>
+      <button class="btn" id="btnSignIn" title="Sign in to this site">👤 Sign in</button>
+      <button class="btn" id="btnWebPrev" title="Previous chapter">‹ Chapter</button>
+      <button class="btn" id="btnWebNext" title="Next chapter">Chapter ›</button>
+      <button class="btn icon-btn" id="btnWebExternal" title="Open in new browser tab">↗</button>
+    </div>
+    <label class="auto-row">
+      <input type="checkbox" id="webAutoContinue" checked>
+      Auto-continue to the next web chapter when finished
+    </label>
+    <p class="hint" id="webMessage">Choose a site, type an address, or search the web. Paste a YouTube link to watch it here.</p>
+    <div class="browser-stage" id="browserStage">
+      <div class="browser-start" id="browserStart">
+        <h3 style="font-family:'Literata',serif;font-size:16px;margin-bottom:12px">Quick links</h3>
+        <div class="speed-dial" id="speedDial"></div>
+        <p class="hint" style="margin-top:14px">
+          <b>Reader view</b> shows a clean copy of any page and works on most sites.
+          <b>Live</b> runs the real site (needed for signing in), but many sites refuse to appear inside other apps.
+        </p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="cinemaBar">
+  <button class="btn small" id="btnCinemaExit" title="Turn the lights back on">✕ Lights on</button>
+  <button class="btn small" id="btnCineFullBar" title="Reading environment in full screen">⛶ Full screen</button>
+  <button class="btn small" id="btnCinePipBar" title="Reading environment in a pop-out window">⧉ Pop-out</button>
+</div>
+
+<div class="transport" id="transport">
+  <button class="tbtn" id="btnPages" data-label="Contents" title="Pages & chapters">☰</button>
+  <button class="tbtn" id="btnPrevPage" data-label="Prev page" title="Previous page">«</button>
+  <button class="tbtn" id="btnBookmark" data-label="Bookmark" title="Add bookmark">🔖</button>
+  <button class="tbtn" id="btnPrevSent" data-label="Prev line" title="Previous sentence">⏮︎</button>
+  <button class="tbtn play" id="btnPlay" title="Play / pause">▶︎</button>
+  <button class="tbtn" id="btnNextSent" data-label="Next line" title="Next sentence">⏭︎</button>
+  <button class="tbtn" id="btnStop" data-label="Stop" title="Stop">■</button>
+  <button class="tbtn" id="btnSettings" data-label="Voice" title="Voice & reading settings">⚙</button>
+  <button class="tbtn" id="btnNextPage" data-label="Next page" title="Next page">»</button>
+  <i class="orb-rail" aria-hidden="true"></i>
+  <i class="orb-link" aria-hidden="true"></i>
+</div>
+
+<footer>
+  <button class="btn small" id="btnTheme">☀ Light</button>
+  <button class="btn small" id="btnBookmarks">🔖 Bookmarks</button>
+  <div class="status">Status: <b id="statusVal">Ready</b>
+    <span class="eq" id="eq"><i></i><i></i><i></i></span>
+  </div>
+</footer>
+
+<div id="scrim"></div>
+
+<aside class="drawer" id="drawer" aria-label="Pages and settings">
+  <div class="drawer-head"><h2>PAGES</h2><button class="x" id="btnCloseDrawer">×</button></div>
+  <div class="seg">
+    <button id="dtabPages" class="active">Pages</button>
+    <button id="dtabChapters">Chapters</button>
+    <button id="dtabVoice">Voice</button>
+  </div>
+  <div class="drawer-body">
+    <div class="dpanel" id="panelPages"><div class="list" id="pagesList"></div></div>
+    <div class="dpanel" id="panelChapters" hidden><div class="list" id="chaptersList"></div></div>
+
+    <div class="dpanel" id="panelVoice" hidden>
+      <div>
+        <label class="lbl" for="readerTheme">Reading colors</label>
+        <select id="readerTheme">
+          <option value="dark">Dark - Black &amp; White</option>
+          <option value="light">Light</option>
+          <option value="sepia">Sepia</option>
+          <option value="custom">Custom</option>
+        </select>
+        <p class="hint" style="margin-top:7px">Applies only to the reading page, not the menus or controls.</p>
+      </div>
+      <div id="customReaderColors" hidden>
+        <div class="reader-color-pair">
+          <div><label class="lbl" for="readerBgColor">Page background</label><input type="color" id="readerBgColor" value="#050505"></div>
+          <div><label class="lbl" for="readerTextColor">Text color</label><input type="color" id="readerTextColor" value="#ffffff"></div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div>
+        <label class="lbl" for="ambientMusic">Background music</label>
+        <select id="ambientMusic">
+          <option value="off">Off</option>
+          <optgroup label="Nature / Weather">
+            <option value="rain1">Rain 1</option>
+            <option value="rain2">Rain 2</option>
+            <option value="rain3">Rain 3</option>
+            <option value="rain4">Rain 4</option>
+            <option value="rain5">Rain 5</option>
+            <option value="rain6">Rain 6</option>
+            <option value="soft-rain1">Soft rain 1</option>
+            <option value="soft-rain2">Soft rain 2</option>
+            <option value="soft-rain3">Soft rain 3</option>
+            <option value="soft-rain4">Soft rain 4</option>
+            <option value="soft-rain5">Soft rain 5</option>
+            <option value="soft-rain6">Soft rain 6</option>
+            <option value="soft-rain7">Soft rain 7</option>
+            <option value="blizzard1">Blizzard 1</option>
+            <option value="blizzard2">Blizzard 2</option>
+            <option value="blizzard3">Blizzard 3</option>
+            <option value="blizzard4">Blizzard 4</option>
+            <option value="blizzard5">Blizzard 5</option>
+            <option value="blizzard6">Blizzard 6</option>
+            <option value="blizzard7">Blizzard 7</option>
+            <option value="blizzard8">Blizzard 8</option>
+            <option value="cricket1">Crickets 1</option>
+            <option value="cricket2">Crickets 2</option>
+            <option value="cricket3">Crickets 3</option>
+            <option value="cricket4">Crickets 4</option>
+            <option value="cricket5">Crickets 5</option>
+            <option value="cricket6">Crickets 6</option>
+            <option value="cricket7">Crickets 7</option>
+            <option value="nature">Soft rain (generated)</option>
+            <option value="blizzard">Harsh blizzard (generated)</option>
+            <option value="crickets">Night crickets (generated)</option>
+          </optgroup>
+          <optgroup label="Animals &amp; Wild">
+            <option value="bird1">Birdsong</option>
+            <option value="jungle1">Jungle 1</option>
+            <option value="jungle2">Jungle 2</option>
+            <option value="jungle3">Jungle 3</option>
+            <option value="jungle4">Jungle 4</option>
+            <option value="owl1">Owl 1</option>
+            <option value="owl2">Owl 2</option>
+            <option value="wolf1">Wolf 1</option>
+            <option value="wolf2">Wolf 2</option>
+          </optgroup>
+          <optgroup label="Ambient">
+            <option value="soft-ambient1">Ambient track 1</option>
+            <option value="soft-ambient2">Ambient track 2</option>
+            <option value="soft-ambient3">Ambient track 3</option>
+            <option value="soft-ambient4">Ambient track 4</option>
+            <option value="soft-ambient5">Ambient track 5</option>
+            <option value="soft-ambient6">Ambient track 6</option>
+            <option value="soft-ambient7">Ambient track 7</option>
+            <option value="soft1">Soundscape 1</option>
+            <option value="soft2">Soundscape 2</option>
+            <option value="soft3">Soundscape 3</option>
+            <option value="soft4">Soundscape 4</option>
+            <option value="soft5">Soundscape 5</option>
+            <option value="soft6">Soundscape 6</option>
+            <option value="soft7">Soundscape 7</option>
+            <option value="soft8">Soundscape 8</option>
+            <option value="soft9">Soundscape 9</option>
+            <option value="soft10">Soundscape 10</option>
+            <option value="calm">Soft ambient music (generated)</option>
+          </optgroup>
+          <optgroup label="Cinematic / Moods">
+            <option value="thriller1">Thriller 1</option>
+            <option value="thriller2">Thriller 2</option>
+            <option value="thriller3">Thriller 3</option>
+            <option value="thriller4">Thriller 4</option>
+            <option value="thriller5">Thriller 5</option>
+            <option value="thriller6">Thriller 6</option>
+            <option value="thriller7">Thriller 7</option>
+            <option value="thriller8">Thriller 8</option>
+            <option value="action1">Action 1</option>
+            <option value="action2">Action 2</option>
+            <option value="action3">Action 3</option>
+            <option value="action4">Action 4</option>
+            <option value="action5">Action 5</option>
+            <option value="action6">Action 6</option>
+            <option value="action7">Action 7</option>
+            <option value="mystery1">Mystery 1</option>
+            <option value="mystery2">Mystery 2</option>
+            <option value="sci-fi1">Sci-fi 1</option>
+            <option value="sci-fi2">Sci-fi 2</option>
+            <option value="sci-fi3">Sci-fi 3</option>
+            <option value="sci-fi4">Sci-fi 4</option>
+            <option value="sci-fi5">Sci-fi 5</option>
+            <option value="sci-fi6">Sci-fi 6</option>
+            <option value="sci-fi7">Sci-fi 7</option>
+            <option value="sci-fi8">Sci-fi 8</option>
+            <option value="fantasy1">Fantasy 1</option>
+            <option value="fantasy2">Fantasy 2</option>
+            <option value="fantasy3">Fantasy 3</option>
+            <option value="fantasy4">Fantasy 4</option>
+            <option value="fantasy5">Fantasy 5</option>
+            <option value="fantasy6">Fantasy 6</option>
+            <option value="fantasy7">Fantasy 7</option>
+            <option value="fantasy8">Fantasy 8</option>
+            <option value="thriller">Thriller / suspense (generated)</option>
+            <option value="action">Action (restrained, generated)</option>
+            <option value="mystery">Mystery / noir (generated)</option>
+            <option value="fantasy">Sci-fi / fantasy (generated)</option>
+            <option value="fireplace">Tavern fireplace (generated)</option>
+          </optgroup>
+          <option value="file">My music file…</option>
+        </select>
+        <p class="hint" style="margin-top:7px">Plays softly while the reader is speaking. Presets are generated locally; choose a file for recorded music.</p>
+        <div id="ambientFileWrap" hidden style="margin-top:10px">
+          <label class="lbl" for="ambientFile">Choose an audio or video file</label>
+          <input type="file" id="ambientFile" accept="audio/*,video/mp4,video/webm,video/ogg">
+          <p class="hint" id="ambientFileName" style="margin-top:6px">Choose a file each time you open the reader. Supported formats depend on your browser.</p>
+        </div>
+      </div>
+      <div>
+        <label class="lbl" for="ambientVolume">Music volume</label>
+        <div class="field-row"><input type="range" id="ambientVolume" min="0" max="1" step="0.01" value="0.4"><span class="val-badge" id="ambientVolumeValue">40%</span></div>
+      </div>
+      <div class="divider"></div>
+      <div><label class="lbl" for="voiceSelect">Voice</label>
+        <select id="voiceSelect"><option>Loading voices...</option></select></div>
+
+      <div>
+        <div class="fix-head" style="margin-bottom:7px"><label class="lbl">🤖 AI voices <span class="badge new">Piper</span></label></div>
+        <div class="piper-filter">
+          <select id="piperLang"><option value="">🌐 Select your language…</option></select>
+          <input id="piperSearch" type="search" placeholder="Search voices…" autocomplete="off">
+        </div>
+        <div class="piper-grid" id="piperVoices"></div>
+        <p class="hint" id="piperStatus" style="margin-top:7px">Free neural voices in 35 languages — including Urdu 🇵🇰. Pick your language above, tap a voice to download it once, then it works offline forever.</p>
+      </div>
+
+      <div><label class="lbl">Speed</label>
+        <div class="field-row"><input type="range" id="rateRange" min="0.5" max="3" step="0.05" value="1"><span class="val-badge" id="rateVal">1.00×</span></div>
+        <div class="rate-presets" id="ratePresets">
+          <button data-r="0.75">0.75×</button><button data-r="1" class="active">1×</button>
+          <button data-r="1.25">1.25×</button><button data-r="1.5">1.5×</button><button data-r="2">2×</button>
+        </div></div>
+
+      <div><label class="lbl" for="fontInput">Font</label>
+        <input type="text" id="fontInput" list="fontList" value="Literata" spellcheck="false">
+        <datalist id="fontList">
+          <option value="Literata"><option value="Inter"><option value="Georgia"><option value="Arial">
+          <option value="Times New Roman"><option value="Urdu Nastaliq"><option value="Chinese Serif">
+          <option value="Japanese Sans"><option value="Arabic Amiri">
+        </datalist></div>
+
+      <div><label class="lbl">Size</label>
+        <div class="field-row"><input type="range" id="sizeRange" min="14" max="32" step="1" value="19"><span class="val-badge" id="sizeVal">19 px</span></div>
+        <div class="field-row" style="margin-top:8px">
+          <button class="btn small" id="btnFonts">Installed fonts</button>
+          <button class="btn small" id="btnResetAppearance">Reset</button>
+        </div>
+        <p class="hint" style="margin-top:7px">Type the exact name of any font installed on this device, or tap Installed fonts to pick from a list.</p></div>
+
+      <div><label class="lbl" for="highlightSelect">Highlighting</label>
+        <select id="highlightSelect">
+          <option value="word">Word by Word</option>
+          <option value="sentence">Entire Sentence / Line</option>
+          <option value="sentence+word">Sentence + Word</option>
+          <option value="paragraph">Entire Paragraph</option>
+          <option value="paragraph+word">Paragraph + Word</option>
+        </select></div>
+
+      <label class="check-row"><input type="checkbox" id="autoScroll" checked> Auto-scroll to follow the reading</label>
+
+      <div><label class="lbl" for="translateSelect">Auto-translate pages</label>
+        <select id="translateSelect"></select></div>
+
+      <div>
+        <div class="fix-head" style="margin-bottom:7px"><label class="lbl" style="margin:0">Smart Chinese gender</label><span class="badge new">NEW</span></div>
+        <div class="gpanel">
+          <label class="check-row"><input type="checkbox" id="gOn" checked> <b>Use she/her for women and he/him for men in the English translation</b></label>
+          <p class="hint">Chinese writes 他 and 她 the same sound, so translators often call every character “he”. This detects each character’s gender from 她/他, titles like 师姐 / 公子, and name cues — then uses she/her for women and he/him for men in the English translation. Add corrections below.</p>
+          <div class="gchips" id="gChips"></div>
+          <div class="grow"><input type="text" id="gName" placeholder="Name (e.g. Lin Xin)" spellcheck="false" autocomplete="off">
+            <button class="gbtn on" id="gShe" type="button">♀ she/her</button><button class="gbtn" id="gHe" type="button">♂ he/him</button><button class="gbtn" id="gAdd" type="button">+ Add</button></div>
+        </div>
+      </div>
+
+      <div id="trExtra" hidden>
+        <div><label class="lbl" for="translateStyle">Translation style</label>
+          <select id="translateStyle">
+            <option value="direct">Direct — exactly what the page says</option>
+            <option value="simple">Simple words — everyday language</option>
+            <option value="teacher">Teacher — simple words + explains idioms</option>
+          </select>
+          <p class="hint" style="margin-top:7px">Simple and Teacher break long sentences, swap hard words for plain ones, and keep names untouched — like a patient literacy teacher retelling the page, not a dictionary.</p></div>
+
+        <div style="margin-top:10px"><label class="lbl" for="translateEngine">Translation engine</label>
+          <select id="translateEngine">
+            <option value="google">Fast — Google Translate + smart clean-up</option>
+            <option value="ai">AI teacher (beta) — reads the whole page</option>
+          </select>
+          <p class="hint" style="margin-top:7px">The AI engine sends the page (with the previous paragraphs as context) to a free shared model, so it can catch idioms and keep the story straight. It is slower and may be busy; it then falls back to the fast engine automatically.</p></div>
+      </div>
+
+      <div><label class="lbl" for="speechLang">Voice language</label>
+        <select id="speechLang"></select>
+        <p class="hint" style="margin-top:7px">Reading aloud needs a voice for the chosen language. The app picks a matching installed voice when it finds one.</p></div>
+
+      <div class="divider"></div>
+
+      <div class="fix-head">
+        <h4>Skip words / punctuation</h4>
+        <span class="badge new">NEW</span>
+        <label class="switch"><input type="checkbox" id="skipToggle" checked><span></span></label>
+      </div>
+      <div>
+        <textarea id="skipInput" rows="3" spellcheck="false" placeholder="e.g. —, *, 【】, ♪, hmm, comma, period"></textarea>
+        <div class="skip-chips" id="skipChips" style="margin-top:7px"></div>
+        <p class="hint" style="margin-top:7px">Comma-separated words or symbols that are never read aloud. You can also type names like <b>comma</b>, <b>period</b>, <b>semicolon</b>, <b>dash</b>, <b>quotes</b>. The page text stays exactly as written — only the audio changes.</p>
+      </div>
+
+      <div class="fix-head">
+        <h4>Pronunciation fixes</h4>
+        <span class="badge new">NEW</span>
+        <label class="switch"><input type="checkbox" id="pronToggle" checked><span></span></label>
+      </div>
+      <p class="hint">Say words the way they sound in Chinese — <b>Xin → Shin</b>, <b>Xiao → Shiao</b>, <b>Qi → Chi</b>, <b>Zhang → Jang</b>, <b>Cai → Tsai</b>… Whole words, any capitalization. Combined names like <b>Qingcheng</b> are split into syllables automatically. Only the spoken audio changes.</p>
+      <div class="rules-list" id="rulesList"></div>
+      <div class="rule-count" id="ruleCount"></div>
+      <div class="rule-add">
+        <input type="text" id="ruleFrom" placeholder="Word (e.g. Yan)" spellcheck="false">
+        <span class="arrow">→</span>
+        <input type="text" id="ruleTo" placeholder="Say as (e.g. Yen)" spellcheck="false">
+        <button class="btn small primary" id="btnAddRule">+ Add</button>
+      </div>
+      <div class="field-row">
+        <button class="btn small" id="btnResetRules">Reset defaults</button>
+        <button class="btn small danger" id="btnClearRules">Clear all</button>
+        <button class="btn small" id="btnCancelEdit" hidden>Cancel edit</button>
+      </div>
+
+      <div class="test-box">
+        <label class="lbl" style="margin:0">Test the voice fixes</label>
+        <div class="field-row">
+          <input type="text" id="testInput" value="Xiao Chen and Lin Xin climbed Mount Qingcheng." spellcheck="false">
+          <button class="btn small jade" id="btnTest" title="Speak the test sentence">🔊</button>
+        </div>
+        <div class="preview">Will say: <b id="previewText"></b></div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div class="modal" id="modalLibrary" hidden>
+  <div class="modal-panel">
+    <div class="modal-head"><h3>My Library</h3><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <div class="lib-toolbar">
+        <input type="text" id="libSearch" placeholder="Search library…">
+        <select id="libSort">
+          <option value="titleAsc">Title: Ascending (A → Z)</option>
+          <option value="titleDesc">Title: Descending (Z → A)</option>
+          <option value="recent">Recently Added</option>
+          <option value="chaptersAsc">Chapters: Ascending (Least → Most)</option>
+          <option value="chaptersDesc">Chapters: Descending (Most → Least)</option>
+        </select>
+      </div>
+      <div class="lib-toolbar" style="align-items:center;justify-content:space-between">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn small" id="libImport">📂 Import file</button>
+          <button class="btn small" id="libPaste">📋 Paste text</button>
+          <button class="btn small" id="libWeb">🌐 From website</button>
+          <button class="btn small" id="libBackup" title="Download every book, bookmark and your progress as one file">💾 Backup</button>
+          <button class="btn small" id="libRestore" title="Restore books from a backup file">📥 Restore</button>
+          <input type="file" id="libRestoreFile" accept=".json,application/json" hidden>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center">
+          <button class="btn small" id="libExpandAll" title="Expand all novels & chapters">▾ Expand all</button>
+          <button class="btn small" id="libCollapseAll" title="Collapse all">▸ Collapse all</button>
+        </div>
+      </div>
+      <div class="list" id="libraryList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modalBookmarks" hidden>
+  <div class="modal-panel">
+    <div class="modal-head"><h3>Bookmarks</h3><button class="x" data-close>×</button></div>
+    <div class="modal-body"><div class="list" id="bookmarksList"></div></div>
+  </div>
+</div>
+
+<div class="modal" id="modalWeb" hidden>
+  <div class="modal-panel">
+    <div class="modal-head"><h3>Open Web Page for Reading</h3><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <input type="text" id="webUrlInput" placeholder="https://… chapter address" spellcheck="false">
+      <button class="btn primary" id="btnOpenRead">Open &amp; read</button>
+      <p class="hint">Enter a chapter address and tap Open &amp; read. The app fetches a clean copy and starts reading when ready.</p>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modalPaste" hidden>
+  <div class="modal-panel">
+    <div class="modal-head"><h3>Paste text</h3><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <input type="text" id="pasteTitle" placeholder="Title">
+      <textarea id="pasteText" rows="9" placeholder="Paste your chapter or story here…"></textarea>
+      <button class="btn primary" id="btnPasteAdd">Add &amp; read</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modalEdit" hidden>
+  <div class="modal-panel">
+    <div class="modal-head"><h3 id="editModalTitle">Rename</h3><button class="x" data-rename-close aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <label class="lbl" id="editLabel" for="editInput">Name</label>
+      <input type="text" id="editInput" maxlength="200" autocomplete="off" spellcheck="false">
+      <div class="fix-head" style="justify-content:flex-end">
+        <button class="btn" data-rename-close>Cancel</button>
+        <button class="btn primary" id="btnEditSave">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modalFonts" hidden>
+  <div class="modal-panel">
+    <div class="modal-head"><h3>Installed fonts</h3><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <input type="text" id="fontSearch" placeholder="Filter fonts…">
+      <div class="list" id="fontsList"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<input type="file" id="fileInput" accept=".txt,.md,.html,.htm,.epub,.pdf" multiple hidden>
+
+<script src="js/reader.js"></script>
+<script type="module" src="js/piper.js"></script>
+</body>
+</html>
