@@ -10,6 +10,7 @@
 ![Edge](https://img.shields.io/badge/Edge-MV3-0078D7?logo=microsoftedge&logoColor=white)
 ![Voices](https://img.shields.io/badge/Piper%20AI%20voices-183%20%2F%2050%2B%20languages-9146FF)
 ![Privacy](https://img.shields.io/badge/Privacy-100%25%20local-2EA043)
+![License](https://img.shields.io/badge/License-MIT-blue)
 
 </div>
 
@@ -17,10 +18,8 @@
 
 Ultra Pro Reader started as a single-file read-aloud novel reader and is now a full **Manifest V3 browser extension**. Nothing from the original app was dropped — and it gained two superpowers: it can **read any website aloud**, and it runs **free offline neural AI voices (Piper)** directly on your device.
 
-<!-- Add screenshots here, e.g.:
-![Reader](screenshots/reader.png)
-![Voice picker](screenshots/voices.png)
--->
+| 📖 Reading view | ![Reader](screenshots/reader.jpg) |
+| 🤖 Language-first Piper picker | ![Voices](screenshots/voices.png) |
 
 ## ✨ Features
 
@@ -137,6 +136,10 @@ The extension folder was moved or renamed after loading. Remove the card on the 
 - [Read Aloud](https://github.com/ken107/read-aloud) (by Hai Phan, MIT) — article extraction engine this extension's web reader is ported from
 - [pdf.js](https://mozilla.github.io/pdf.js/) — PDF rendering
 - [ONNX Runtime Web](https://onnxruntime.ai/) — local model inference
+
+## 📄 License
+
+[MIT](LICENSE) © 2026 z33shan33khan
 
 ---
 

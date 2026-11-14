@@ -3510,7 +3510,8 @@ function renderPiperVoices(){
   /* Language-first picker: one entry per language (regional variants merged),
      defaults to the reader's language, choice is remembered */
   const langSel = $("piperLang");
-  if(langSel && !langSel.options.length){
+  if(langSel && !langSel.dataset.built){
+    langSel.dataset.built = "1";
     const fams = new Map();
     renderPiperVoices.all.forEach(v => {
       if(!fams.has(v.lang)) fams.set(v.lang, { name: v.langLabel.replace(/\s*\([A-Za-z]{2,3}\)\s*$/, ""), flag: v.flag || "🗣", count: 0 });
