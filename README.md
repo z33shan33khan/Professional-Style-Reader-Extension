@@ -27,21 +27,22 @@ Ultra Pro Reader started as a single-file read-aloud novel reader and is now a f
 
 | | |
 |---|---|
-| 🗂 **Library** | Import `.epub`, `.pdf`, `.txt`, `.md`, `.html` — or paste text. Smart chapter splitting, rename, search & sort. |
+| 🗂 **Library** | Import `.epub`, `.pdf`, `.txt`, `.md`, `.html` — or paste text. Smart chapter splitting, rename, search & sort. Everything is stored locally (unlimited storage) and kept until **you** clear it — **🗑 Clear stored books** in the library does exactly that. |
 | 🔊 **Read aloud** | Karaoke word highlighting, click-to-read, sentence skip, auto-continue, custom pronunciation rules & skip lists. |
+| 📚 **Web-novel sources** | Pick a source (NovelFull, AllNovelFull), search, and import a chapter range (up to 150 per batch) straight into your library — long novels load their chapter lists lazily. |
 | 🀄 **Smart translation** | Gender-aware translation (他/她 fix) and custom character corrections for CJK novels. |
 | 🎬 **Cinema modes** | 🕯 Lights off · ⛶ Full screen · ⧉ Pop-out window · Auto with play. The header tucks away and non-narrated paragraphs dim so your eyes follow the voice. |
 | 📏 **Reading layout** | Text column capped at an optimal 72-character measure — no more lines stretching edge-to-edge. |
 | 🌧 **Background ambience** | **87 bundled recordings** organized by genre — Nature/Weather (rain, soft rain, blizzards, crickets), Animals & Wild (owls, wolves, birdsong, jungle), Ambient soundscapes, and Cinematic moods (action, fantasy, mystery, sci-fi, thriller). Compressed to ~64 kbps (~69 MB total); mixes under the narration and follows play/pause. |
 | 🧭 **The Orb** | Edge-docking floating menu: tap = play/pause, long-press = menu, drag = reposition. |
 | 📊 **Always-on HUD** | Title · chapter · time left · page, plus BOOK % and CHAPTER % progress bars. |
-| 💾 **Backup / Restore** | Export your whole library (books, progress, settings) to a `.json` file. |
+| 💾 **Backup / Restore** | Export your whole library to a `.json` file — **complete book text**, bookmarks, progress and settings. Old heading-only backups restore fine; the text is refilled from local storage where available. |
 
 ### 🦾 Extension superpowers
 
 | | |
 |---|---|
-| 🤖 **183 AI voices in 50+ languages (Piper)** | Pick your language from the dropdown — English, **Urdu 🇵🇰**, Hindi, Arabic, Bengali, Japanese, Korean, Hebrew, Chinese, Thai, Telugu, and many more. Tap a voice to download it once (~20–110 MB), then it works **fully offline**. Search box, country flags, quality & exact sizes shown; 🗑 frees downloaded models. |
+| 🤖 **183 AI voices in 50+ languages (Piper)** | Pick your language from the dropdown — English, **Urdu 🇵🇰**, Hindi, Arabic, Bengali, Japanese, Korean, Hebrew, Chinese, Thai, Telugu, and many more. Tap a voice to download it once (~20–110 MB), then it works **fully offline**. The engine + model warm up as soon as the reader opens (no lag on the first sentence), and two batches are always synthesized ahead so reading never stalls between sentences. Search box, country flags, quality & exact sizes shown; 🗑 frees downloaded models. |
 | 🌐 **Read any website aloud** | Toolbar button or right-click → the article is extracted, added to your library, and read aloud. Select a paragraph → right-click to read just that. |
 | 🕷 **Smooth extraction engine** | A port of the open-source *Read Aloud* extension's parser: DOM block walking + statistical boilerplate trimming, with hints for novel sites (wtr-lab, Royal Road, Wattpad, Webnovel, AO3, FanFiction, ScribbleHub, …). |
 | 📑 **wtr-lab & JS-only sites** | Sites that hide chapter text behind JavaScript are read through a live-tab grab: a hidden tab opens briefly, waits for the reader to hydrate, extracts the chapter, and closes. Next-chapter links are detected, so ⏭ auto-continue keeps reading the series. |
@@ -80,12 +81,14 @@ Ultra Pro Reader started as a single-file read-aloud novel reader and is now a f
 | Add rain / ambience under narration | Reader → ⚙ → **Background music** → pick a mood or recording |
 | Go back to system voices | Voice drawer → **System voices** chip |
 | Read in the dark | 🕯 / ⛶ / ⧉ above the book (or Auto with play) |
+| Add a web novel without opening the site first | Library → 📚 **Sources** (or the 📚 button above the book) → search → pick novel → choose chapters → Import |
 | Move the library to a new PC | Library → 💾 Backup → 📥 Restore on the other PC |
+| Free up storage / start fresh | Library → 🗑 **Clear stored books** (back up first — it deletes everything) |
 
 ## 🔒 Privacy
 
 - **100% local.** No accounts, no servers, no analytics, no cloud sync.
-- Books, progress, and settings never leave your device (IndexedDB + browser storage).
+- Books, progress, and settings never leave your device (IndexedDB + browser storage, with the `unlimitedStorage` permission so large libraries are never evicted).
 - AI voice models are fetched once from the free [`piper-voices`](https://huggingface.co/rhasspy/piper-voices) library on Hugging Face and cached in the browser's private OPFS storage.
 
 ## 🧰 Tech notes
@@ -99,7 +102,7 @@ Ultra Pro Reader started as a single-file read-aloud novel reader and is now a f
 
 ```
 Ultra-Reader-Extension/
-├── manifest.json              # MV3 manifest (v1.1.0)
+├── manifest.json              # MV3 manifest (v1.2.0)
 ├── background.js              # Service worker: extraction engine + tab grab + message relay
 ├── reader.html / js/
 │   ├── reader.js              # The full reader app (library, playback, HUD, cinema, …)
@@ -122,7 +125,7 @@ Only the first time you pick a voice. Afterwards they run offline on your CPU.
 No. No servers, no accounts, no analytics.
 
 **Why did the first sentence take a few seconds?**
-The AI voice generates audio locally; the first sentence also warms up the engine. Sentences are pre-generated in the background so the following pages flow smoothly.
+The engine + voice model now warm up as soon as the reader opens, so the first sentence starts fast. Sentences are pre-generated two batches ahead in the background so the following pages flow smoothly.
 
 **A voice failed to download.**
 First downloads need a connection and can be 20–110 MB. Check your network and tap the voice again — downloads resume in place.
