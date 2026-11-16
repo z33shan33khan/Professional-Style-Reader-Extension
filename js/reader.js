@@ -1933,8 +1933,27 @@ function persistWebBook(book, keepId){
 }
 
 /* Library cleanup: fold per-chapter web entries created by older versions into
-   one book per novel (same site + same novel name), deduping chapters. */
+   one book per novel (same site + same novel name), deduping chapters, and
+   drop loading-skeleton chapters ("Opening…" pages) left by the old grabber. */
+function webChapterIsJunk(c){
+  const t = String((c && c.text) || "").replace(/\s+/g, " ").trim();
+  if(!t) return true;
+  if(t.length < 120) return true;   /* real novel chapters are never this short */
+  return /^\s*(opening|loading|please wait|just a moment)\b/i.test(t) && t.length < 400;
+}
 function mergeWebBookDuplicates(){
+  /* Prune junk chapters first, then drop books left with nothing. */
+  let pruned = 0;
+  for(const b of library){
+    if(b.source !== "web" || !Array.isArray(b.chapters)) continue;
+    const before = b.chapters.length;
+    b.chapters = b.chapters.filter(c => !webChapterIsJunk(c));
+    pruned += before - b.chapters.length;
+  }
+  for(let i = library.length - 1; i >= 0; i--){
+    const b = library[i];
+    if(b.source === "web" && Array.isArray(b.chapters) && !b.chapters.length) library.splice(i, 1);
+  }
   const groups = new Map();
   for(const b of library){
     if(b.source !== "web"){ continue; }
@@ -1975,9 +1994,12 @@ function mergeWebBookDuplicates(){
       folded++;
     }
   }
-  if(folded){
+  if(folded || pruned){
     saveLibrary(); renderLibrary();
-    toast(`Grouped ${folded} web chapter entr${folded === 1 ? "y" : "ies"} into their novels.`);
+    const bits = [];
+    if(folded) bits.push(`grouped ${folded} web entr${folded === 1 ? "y" : "ies"} into their novels`);
+    if(pruned) bits.push(`removed ${pruned} empty "Opening" page${pruned === 1 ? "" : "s"}`);
+    toast("Library cleaned up: " + bits.join(", ") + ".");
   }
 }
 function openBook(id, opts = {}){
@@ -2642,7 +2664,8 @@ function fetchPageHtml(url, say, { strict = true } = {}){
   return Promise.any(runs).then(result => {
     finished = true;
     controllers.forEach(c => { try{ c.abort(); }catch(_){} });
-    cachePage(url, result);
+    /* Don't cache loading skeletons — they would poison every later read. */
+    if(!result.parsed || !webTextIsSkeleton(result.parsed.text)) cachePage(url, result);
     progressSet(96, 'Extracting readable text…');
     progressEnd('Page downloaded', token);
     return result;
@@ -2770,17 +2793,32 @@ async function readWebPageAsBook(opts = {}){
   if(!tab || !tab.url){ toast('Open a page first.'); return; }
   if(tab.mode === 'youtube'){ toast('Videos can’t be read aloud.'); return; }
   let parsed = tab.web.parsed;
+  if(parsed && webTextIsSkeleton(parsed.text)) parsed = tab.web.parsed = null;  /* cached skeleton — refetch */
   if(!parsed){
     try{
       webMsg('Getting the readable text…');
       const res = await fetchPageHtml(tab.url, webMsg, { strict: false });
       parsed = res.parsed;
+      /* A loading skeleton ("Opening…") is not the chapter — go through the
+         live-tab reader, which waits for the site to actually hydrate. */
+      if(!parsed.text || webTextIsSkeleton(parsed.text)){
+        webMsg('The page is still loading its text — using the live-tab reader…');
+        setStatus('Live-tab reader…');
+        const item = await grabViaTabBridge(tab.url);
+        if(webBookFromGrab(tab.url, item, opts)) return;
+        webMsg('Could not get the real chapter text — the page never finished loading. Try again in a moment.');
+        setStatus('Ready');
+        return;
+      }
       tab.web.parsed = parsed;
       tab.web.next = tab.web.next || parsed.next || guessSiblingChapter(tab.url, +1);
       tab.web.prev = tab.web.prev || parsed.prev || guessSiblingChapter(tab.url, -1);
-    }catch(e){ setStatus('Ready'); webMsg('Could not get the readable text. Try Live view or paste the chapter.'); toast('Could not get readable text: ' + e.message); return; }
+    }catch(e){
+      setStatus('Ready'); webMsg('Could not get the readable text. Try Live view or paste the chapter.');
+      toast('Could not get readable text: ' + e.message); return;
+    }
   }
-  if(!parsed.text || parsed.text.length < 60){
+  if(!parsed.text || parsed.text.length < 60 || webTextIsSkeleton(parsed.text)){
     toast('Not enough text on that page to read.');
     return;
   }
@@ -2859,9 +2897,18 @@ async function importEpubsFromUrls(urls, opts = {}){
   }
 }
 
+/* Real chapter text vs a SPA loading skeleton ("Opening…", spinner pages). */
+function webTextIsSkeleton(text){
+  const s = String(text || "").replace(/\s+/g, " ").trim();
+  if(s.length < 250) return true;   /* real novel chapters are far longer */
+  return /^\s*(opening|loading|please wait|just a moment|initializing)\b/i.test(s) && s.length < 600;
+}
+
 function webBookFromGrab(url, item, opts = {}){
-  const text = String(item.text || '').trim();
-  if(text.length < 60) return false;
+  const text = String(item.text || "").trim();
+  /* Never open a loading skeleton as a "chapter" — that is how the junk
+     "Opening" page got created. The caller falls back / retries instead. */
+  if(text.length < 60 || webTextIsSkeleton(text)) return false;
   const chapterTitle = (item.title || '').trim() || 'Chapter';
   const book = {
     id: 'web:' + (canonicalWebUrl(url) || url), title: chapterTitle, source: 'web',
@@ -2907,9 +2954,11 @@ async function loadWebBook(url, opts = {}){
     const { parsed } = await fetchPageHtml(normalized, (m) => setStatus(m), { strict: false });
     if(stopToken !== null && stopToken !== playbackStopToken) return;
     webFetchOkHosts.add(host);
-    if(!parsed.text || parsed.text.length < 60){
+    const parsedBody = String(parsed.text || "").replace(/\s+/g, " ").trim();
+    if(!parsed.text || webTextIsSkeleton(parsed.text)){
+      /* Loading skeleton — don't open it; grab the real text instead. */
       if(await grabFallback()) return;
-      setStatus('Ready'); toast('Not enough text on that page.'); return;
+      setStatus('Ready'); toast('The page never finished loading its text. Try again in a moment.'); return;
     }
     const chapterTitle = webChapterTitle(parsed, normalized);
     const book = {

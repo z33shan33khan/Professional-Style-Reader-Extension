@@ -60,6 +60,14 @@ async function uprExtract(){
     for(const [re, selCss] of HINT_SELECTORS){ if(re.test(host)) return selCss.split(",")[0].trim(); }
     return null;
   }
+  /* SPA loading states ("Opening…", spinners) — grabbing these as "the chapter"
+     is what produced junk books. Skeleton text is treated as not-yet-loaded. */
+  const PLACEHOLDER_RE = /^\s*(opening|loading|loading…|please wait|just a moment|initializing)\b/i;
+  function isSkeleton(t){
+    const s = String(t || "").replace(/\s+/g, " ").trim();
+    if(s.length < 250) return true;   /* real chapters are far longer */
+    return PLACEHOLDER_RE.test(s) && s.length < 600;
+  }
   let hintText = "";
   for(const [re, selCss] of HINT_SELECTORS){
     if(re.test(host)){
@@ -171,20 +179,23 @@ async function uprExtract(){
 
   /* Wait for JS-rendered readers (React/Next SPAs) to hydrate their content. */
   let text = hintText;
-  if(text.length < 800){
-    for(let i = 0; i < 9; i++){
+  if(!text || text.length < 800 || isSkeleton(text)){
+    for(let i = 0; i < 14; i++){
       await new Promise(r => setTimeout(r, 500));
       const hSel = hintSelector();
       if(hSel){
         const el = document.querySelector(hSel);
         if(el) text = textOf(el);
       }
-      if(!text || text.length < 800) text = parseNow();
-      if(text.length >= 800) break;
+      if(!text || text.length < 800 || isSkeleton(text)) text = parseNow();
+      if(text.length >= 800 && !isSkeleton(text)) break;
     }
   }
-  if(!text || text.length < 200) text = parseNow();
-  if(!text && !epubUrls.length) return { ...base, text: "" };
+  if(!text || text.length < 200 || isSkeleton(text)) text = parseNow();
+  if(!text || isSkeleton(text)){
+    /* Still a loading skeleton — report nothing so the caller retries. */
+    return { ...base, text: "", next: "", epubUrls };
+  }
   const h = document.querySelector("h1");
   const title = (h && textOf(h)) || base.title;
   if(text && title && !text.slice(0, 200).toLowerCase().includes(String(title).toLowerCase().slice(0, 30))) text = title + "\n\n" + text;
@@ -192,6 +203,15 @@ async function uprExtract(){
 }
 
 /* ================= Stash + open the reader ================= */
+/* Top-level copy of the skeleton check (the in-page extractor has its own):
+   real novel chapters are long; "Opening…"-style SPA skeletons are not. */
+const PLACEHOLDER_RE = /^\s*(opening|loading|loading…|please wait|just a moment|initializing)\b/i;
+function textIsSkeleton(text){
+  const s = String(text || "").replace(/\s+/g, " ").trim();
+  if(s.length < 250) return true;
+  return PLACEHOLDER_RE.test(s) && s.length < 600;
+}
+
 async function stashAndOpen(item, autoplay){
   try{
     await chrome.storage.local.set({ uprPending: { ...item, ts: Date.now(), autoplay: !!autoplay } });
@@ -222,6 +242,10 @@ async function readFromTab(tabId, wantSelection){
     return { ok: true, item: { kind: "epub", title: item.title, url: item.url, text: "", next: "", epubUrls: item.epubUrls } };
   }
   if(!item.text || !item.text.trim()) return { ok: false, error: "No readable text found on this page." };
+  /* A loading skeleton ("Opening…") is not a chapter — keep the caller retrying. */
+  if(item.kind !== "selection" && textIsSkeleton(item.text)){
+    return { ok: false, error: "The page is still loading — retrying…" };
+  }
   if(wantSelection && item.kind !== "selection") return { ok: false, error: "No text is selected on this page." };
   return { ok: true, item };
 }
@@ -246,13 +270,16 @@ async function grabViaTab(url){
   try{
     await waitForTabComplete(tab.id, 35000);
     await sleep(1500);
-    for(let i = 0; i < 8; i++){
+    /* Skeletons are rejected by readFromTab now, so keep polling until the
+       reader hydrates — hidden tabs hydrate slowly, so allow more attempts. */
+    for(let i = 0; i < 14; i++){
       const r = await readFromTab(tab.id, false).catch(() => null);
       if(r && r.ok && ((r.item.text && r.item.text.length >= 600) || r.item.kind === "epub")) return r.item;
-      await sleep(800);
+      await sleep(900);
     }
+    /* Last chance: only accept real text, never a loading skeleton. */
     const r = await readFromTab(tab.id, false).catch(() => null);
-    return r && r.ok ? r.item : null;
+    return (r && r.ok && r.item.text && !textIsSkeleton(r.item.text)) ? r.item : null;
   } finally {
     try{ chrome.tabs.remove(tab.id); }catch(e){}
   }
