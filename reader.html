@@ -302,6 +302,18 @@ footer{max-width:980px;margin:0 auto;padding:0 18px 26px;display:flex;align-item
 .modal-head{display:flex;align-items:center;justify-content:space-between;padding:17px 20px;border-bottom:1px solid var(--line)}
 .modal-head h3{font-family:'Literata',serif;font-size:18px}
 .modal-body{padding:18px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:13px}
+.src-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.src-controls input[type=text]{flex:1;min-width:140px}
+.src-controls select{width:auto}
+.src-range-label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.src-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px;max-height:44vh;overflow-y:auto}
+.src-card{text-align:center;cursor:pointer;border:1px solid var(--line2);border-radius:11px;padding:9px;background:var(--overlay);transition:border-color .15s}
+.src-card:hover{border-color:var(--amber)}
+.src-card img{width:88px;height:118px;object-fit:cover;border-radius:8px;background:var(--surface2)}
+.src-card .t{display:block;font-size:12px;margin-top:7px;line-height:1.35;max-height:3.4em;overflow:hidden}
+.src-novel-head{display:flex;gap:12px;align-items:flex-start}
+.src-novel-head img{width:74px;height:100px;object-fit:cover;border-radius:9px;background:var(--surface2)}
+.src-novel-head h4{font-family:'Literata',serif;font-size:16px;margin:0 0 4px}
 .lib-toolbar{display:flex;gap:8px;flex-wrap:wrap}
 .lib-toolbar input{flex:1;min-width:140px}
 .lib-toolbar select{width:auto}
@@ -673,6 +685,7 @@ body.pip-window .reader-card{margin:54px auto 96px;max-width:900px;width:calc(10
   <div class="mode-row">
     <button class="btn icon-btn" id="btnOpenWeb" title="Open web page">🌐</button>
     <button class="btn icon-btn" id="btnPaste" title="Paste text">📋</button>
+    <button class="btn icon-btn" id="btnSources" title="Browse web novel sources">📚</button>
     <button class="btn icon-btn" id="btnOpenFile" title="Open file (.txt, .md, .html, .epub, .pdf)">📂</button>
     <div class="seg" role="tablist">
       <button id="tabReader" class="active" role="tab">Reader</button>
@@ -1084,8 +1097,10 @@ body.pip-window .reader-card{margin:54px auto 96px;max-width:900px;width:calc(10
           <button class="btn small" id="libImport">📂 Import file</button>
           <button class="btn small" id="libPaste">📋 Paste text</button>
           <button class="btn small" id="libWeb">🌐 From website</button>
-          <button class="btn small" id="libBackup" title="Download every book, bookmark and your progress as one file">💾 Backup</button>
+          <button class="btn small" id="libSources" title="Browse web-novel sources, search and import chapters">📚 Sources</button>
+          <button class="btn small" id="libBackup" title="Download every book (full text), bookmark and your progress as one file">💾 Backup</button>
           <button class="btn small" id="libRestore" title="Restore books from a backup file">📥 Restore</button>
+          <button class="btn small danger" id="libClear" title="Delete all stored books, bookmarks and progress from this device">🗑 Clear stored books</button>
           <input type="file" id="libRestoreFile" accept=".json,application/json" hidden>
         </div>
         <div style="display:flex;gap:5px;align-items:center">
@@ -1123,6 +1138,41 @@ body.pip-window .reader-card{margin:54px auto 96px;max-width:900px;width:calc(10
       <input type="text" id="pasteTitle" placeholder="Title">
       <textarea id="pasteText" rows="9" placeholder="Paste your chapter or story here…"></textarea>
       <button class="btn primary" id="btnPasteAdd">Add &amp; read</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modalSources" hidden>
+  <div class="modal-panel">
+    <div class="modal-head"><h3>Browse web novel sources</h3><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <div class="src-controls">
+        <select id="srcSource" title="Source site"></select>
+        <input type="text" id="srcQuery" placeholder="Search novels…">
+        <button class="btn primary" id="btnSrcSearch">Search</button>
+      </div>
+      <div id="srcStatus" class="hint"></div>
+      <div id="srcResults" class="src-results"></div>
+      <div id="srcNovelPanel" hidden>
+        <button class="btn" id="btnSrcBack">← Back to results</button>
+        <div class="src-novel-head">
+          <img id="srcNovelCover" alt="" hidden>
+          <div>
+            <h4 id="srcNovelTitle"></h4>
+            <p id="srcNovelCount" class="hint"></p>
+          </div>
+        </div>
+        <div class="src-controls">
+          <label class="src-range-label">From chapter
+            <input type="number" id="srcFrom" value="1" min="1" style="width:5.5rem">
+            to
+            <input type="number" id="srcTo" value="10" min="1" style="width:5.5rem">
+          </label>
+          <button class="btn primary" id="btnSrcImport">Import chapters</button>
+        </div>
+        <button class="btn" id="btnSrcStop" hidden>Stop importing</button>
+        <div id="srcImportStatus" class="hint"></div>
+      </div>
     </div>
   </div>
 </div>

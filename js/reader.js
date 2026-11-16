@@ -197,9 +197,15 @@ let library = [], bookmarks = [];
 try{ library = JSON.parse(localStorage.getItem("upr.library") || "[]"); }catch(e){}
 try{ bookmarks = JSON.parse(localStorage.getItem("upr.bookmarks") || "[]"); }catch(e){}
 function saveLibrary(){
-  /* Full text goes to IndexedDB; localStorage keeps only titles + placeholders. */
+  /* Full text goes to IndexedDB; localStorage keeps only titles + placeholders.
+     Books still holding "__IDB__" placeholders have not been hydrated yet —
+     never write those over the real cached text. */
   try{
-    library.forEach(b => { if(b.chapters) idbPut("t:" + b.id, JSON.stringify({ch: b.chapters})); });
+    library.forEach(b => {
+      if(!b.chapters || !b.chapters.length) return;
+      if(b.chapters.some(c => c.text === "__IDB__")) return;
+      idbPut("t:" + b.id, JSON.stringify({ch: b.chapters}));
+    });
     const lite = library.map(b => ({...b, chapters: (b.chapters || []).map(c => ({title: c.title, text: "__IDB__"}))}));
     localStorage.setItem("upr.library", JSON.stringify(lite));
   }catch(e){ toast("Storage is full - this book is kept for this session only."); }
@@ -792,20 +798,40 @@ function isPiperVoice(){
   return String(S.settings.voiceURI || "").startsWith("piper:") && !!window.PiperBridge;
 }
 function piperVoiceId(){ return String(S.settings.voiceURI || "").slice(6); }
-let piperAudio = null, piperPre = null;
+let piperAudio = null, piperQueue = [];
 function piperStop(){
   if(piperAudio){ const a = piperAudio; piperAudio = null; try{ a.pause(); }catch(e){} try{ a.removeAttribute("src"); }catch(e){} }
+  piperQueue = [];
 }
-/* Generate the next batch quietly in the background so reading flows without gaps. */
+/* Load the engine + model right away so the first "Read aloud" tap doesn't sit
+   on "Piper: generating…" while a ~60 MB model is read back and prepared. */
+let piperWarmId = null;
+function piperWarmUp(){
+  if(!isPiperVoice() || piperWarmId === piperVoiceId()) return;
+  piperWarmId = piperVoiceId();
+  window.PiperBridge.load(piperVoiceId()).catch(() => { piperWarmId = null; });
+}
+/* Keep up to two batches synthesized ahead of playback so a slow batch of
+   inference never leaves a silent gap between sentences. */
 function piperPrefetch(batch){
   try{
     if(!isPiperVoice()) return;
-    const nextIdx = batch ? batch.endIndex + 1 : pos.u;
+    if(piperQueue.length >= 2) return;
+    const g = gen;
     const page = S.pages[S.pageIdx];
-    if(!page || nextIdx >= page.units.length) return;
-    const nb = buildSpeechBatch(nextIdx);
-    if(!nb || !nb.spoken || !nb.spoken.trim() || (piperPre && piperPre.text === nb.spoken)) return;
-    piperPre = {text: nb.spoken, wav: window.PiperBridge.speak(nb.spoken, piperVoiceId())};
+    if(!page) return;
+    let idx = batch ? batch.endIndex + 1 : pos.u;
+    while(idx < page.units.length){
+      const nb = buildSpeechBatch(idx);
+      if(!nb || !nb.spoken || !nb.spoken.trim()) return;
+      if(piperQueue.some(q => q.text === nb.spoken)){ idx = nb.endIndex + 1; continue; }
+      const wav = window.PiperBridge.speak(nb.spoken, piperVoiceId());
+      piperQueue.push({text: nb.spoken, wav});
+      /* Chain the next prefetch when this one finishes — keeps the pipeline
+         full without unbounded memory. */
+      wav.then(() => { if(g === gen && S.playing && !S.paused) piperPrefetch(batch); }).catch(() => {});
+      return;
+    }
   }catch(e){}
 }
 async function piperSpeak(batch, g){
@@ -814,12 +840,13 @@ async function piperSpeak(batch, g){
   updateStats();
   setStatus("Piper: generating…");
   let wav = null;
-  if(piperPre && piperPre.text === batch.spoken){ wav = piperPre.wav; piperPre = null; }
+  const qi = piperQueue.findIndex(q => q.text === batch.spoken);
+  if(qi >= 0){ wav = piperQueue[qi].wav; piperQueue.splice(qi, 1); }
   else wav = window.PiperBridge.speak(batch.spoken, piperVoiceId());
   let blob;
   try{ blob = await wav; }
   catch(e){
-    piperPre = null;
+    piperQueue = [];
     if(g !== gen) return;
     toast("Piper voice failed — using the system voice. (" + ((e && e.message) || e) + ")");
     S.settings.voiceURI = "auto"; saveSettings(); loadVoices(); renderPiperVoices();
@@ -857,7 +884,7 @@ async function piperSpeak(batch, g){
 function restartSpeech(){
   gen++; const g = gen;
   stopHlFallback();
-  piperStop(); piperPre = null;
+  piperStop(); piperQueue = [];
   clearTimeout(boundaryTimer);
   const active = speechSynthesis.speaking || speechSynthesis.pending;
   try{ if(active) speechSynthesis.cancel(); }catch(e){}
@@ -1046,7 +1073,7 @@ function resumePlayback(){
 function stopPlayback(){
   gen++; playbackStopToken++; clearTimeout(wdTimer);
   stopHlFallback();
-  piperStop(); piperPre = null;
+  piperStop(); piperQueue = [];
   activeUtterance = null;
   try{ speechSynthesis.cancel(); }catch(e){}
   S.playing = false; S.paused = false; S.needRespeak = false;
@@ -3819,14 +3846,19 @@ function init(){
     else switchPane("reader");
     if(readId && (urlParams.get("env") || cinemaAuto) && !document.body.classList.contains("cinema")) cinemaOn();
     updateTransport(); setStatus("Ready");
+    /* Have the Piper engine + model ready before the first tap on Read aloud. */
+    piperWarmUp();
   });
 
   /* Header / mode */
   $("btnLibrary").onclick = () => { renderLibrary(); openModal("modalLibrary"); };
 
   /* Library backup & restore */
-  $("libBackup").onclick = () => {
-    const data = {v:1, app:"ultra-pro-reader", exported:Date.now(), library, bookmarks, progress:{}};
+  $("libBackup").onclick = async () => {
+    /* Make sure every book's full text is in memory before exporting — a v1
+       backup taken from the metadata-only list held just headings. */
+    await hydrateLibrary();
+    const data = {v:2, app:"ultra-pro-reader", exported:Date.now(), library, bookmarks, settings:S.settings, progress:{}};
     try{ data.progress = JSON.parse(localStorage.getItem("upr.progress") || "{}"); }catch(e){}
     const blob = new Blob([JSON.stringify(data)], {type:"application/json"});
     const a = document.createElement("a");
@@ -3834,7 +3866,7 @@ function init(){
     a.download = "ultra-reader-backup-" + new Date().toISOString().slice(0, 10) + ".json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    toast("Library backup downloaded.");
+    toast("Full library backup downloaded (complete book text, bookmarks, progress).");
   };
   $("libRestore").onclick = () => $("libRestoreFile").click();
   $("libRestoreFile").onchange = async e => {
@@ -3853,8 +3885,17 @@ function init(){
           localStorage.setItem("upr.progress", JSON.stringify({...d.progress, ...cur}));
         }catch(_){}
       }
-      saveLibrary(); saveBookmarks(); renderLibrary();
-      toast(`Restored ${added} new book${added === 1 ? "" : "s"} from backup.`);
+      if(d.settings && typeof d.settings === "object") S.settings = {...S.settings, ...d.settings};
+      /* Old v1 backups carry "__IDB__" placeholders — refill what the local
+         cache still holds, then store whatever full text the backup brought. */
+      for(const b of library){
+        if(b.chapters && b.chapters.some(c => c.text === "__IDB__")){
+          const raw = await idbGet("t:" + b.id);
+          if(raw){ try{ const dd = JSON.parse(raw); if(dd && Array.isArray(dd.ch) && dd.ch.length) b.chapters = dd.ch; }catch(_){ } }
+        }
+      }
+      saveSettings(); saveLibrary(); saveBookmarks(); renderLibrary();
+      toast(`Restored ${added} new book${added === 1 ? "" : "s"} from backup (full text).`);
     }catch(err){ toast("That file is not a valid Ultra Reader backup."); }
   };
   $("tabReader").onclick = () => switchPane("reader");
@@ -4042,7 +4083,7 @@ function init(){
   });
 
   /* Voice & appearance */
-  $("voiceSelect").onchange = e => { voiceFallbackURI = ""; S.settings.voiceURI = e.target.value; saveSettings(); if(S.playing && !S.paused) restartSpeech(); };
+  $("voiceSelect").onchange = e => { voiceFallbackURI = ""; S.settings.voiceURI = e.target.value; saveSettings(); piperWarmUp(); if(S.playing && !S.paused) restartSpeech(); };
   $("speechLang").onchange = e => { voiceFallbackURI = ""; S.settings.speechLang = e.target.value; saveSettings(); if(S.playing && !S.paused) restartSpeech(); };
   $("rateRange").oninput = e => { S.settings.rate = +e.target.value; saveSettings(); applyAppearance(); updateStats(); };
   $("rateRange").onchange = () => { if(S.playing && !S.paused) restartSpeech(); };
@@ -4242,11 +4283,299 @@ function init(){
     closeModals(); openBook(book.id, {resume:false});
     toast(`Added “${title}” to your library.`);
   };
+  /* ---------- Web novel sources (QuickNovel / LNReader style) ---------- */
+  const NOVEL_SOURCES = [
+    { id: 'novelfull', name: 'NovelFull', base: 'https://novelfull.com' },
+    { id: 'allnovelfull', name: 'AllNovelFull', base: 'https://allnovelfull.com' }
+  ];
+  /* In the extension page a direct fetch works (host permissions), so it wins
+     the race; the proxies are the fallback for the pop-out/odd cases. The first
+     proxy that answers is remembered for the rest of the session. */
+  const SRC_PROXIES = [
+    { name: 'direct', build: u => u, timeout: 9000 },
+    { name: 'rendered page', build: u => 'https://r.jina.ai/' + u, headers: { 'X-Return-Format': 'html' }, timeout: 35000 },
+    { name: 'proxy 1', build: u => 'https://cors-get-proxy.sirjosh.workers.dev/?url=' + encodeURIComponent(u), timeout: 16000, delay: 500 },
+    { name: 'proxy 2', build: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), timeout: 16000, delay: 800 },
+    { name: 'proxy 3', build: u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), timeout: 16000, delay: 1100 },
+    { name: 'proxy 4', build: u => 'https://corsproxy.io/?url=' + encodeURIComponent(u), timeout: 12000, delay: 1400 },
+    { name: 'proxy 6', build: u => 'https://test.cors.workers.dev/?' + u, timeout: 16000, delay: 2000 }
+  ];
+  let srcPreferredProxy = null;
+  let srcCurrentNovel = null;   /* { base, title, url, cover, links, loadedPages, maxPage } */
+  let srcImportStop = false;
+
+  function srcProxyOrder(){
+    if(!srcPreferredProxy) return SRC_PROXIES;
+    const first = SRC_PROXIES.find(s => s.name === srcPreferredProxy);
+    return first ? [first, ...SRC_PROXIES.filter(s => s.name !== srcPreferredProxy)] : SRC_PROXIES;
+  }
+
+  function srcTryProxy(src, url, onController){
+    const ctl = new AbortController();
+    if(onController) onController(ctl);
+    const timer = setTimeout(() => ctl.abort(), src.timeout || 16000);
+    return fetch(src.build(url), { ...(src.headers ? { headers: src.headers } : {}), signal: ctl.signal })
+      .then(res => { if(!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
+      .then(body => {
+        if(body.length < 2000 || !/<(html|body|div|p)[\s>]/i.test(body.slice(0, 8000))) throw new Error('unusable response');
+        if(/just a moment|cf-browser-verification|enable javascript and cookies|attention required/i.test(body.slice(0, 4000))) throw new Error('blocked by bot protection');
+        return body;
+      })
+      .catch(e => { throw new Error(src.name + ': ' + (e.name === 'AbortError' ? 'timed out' : (e.message || 'failed'))); })
+      .finally(() => clearTimeout(timer));
+  }
+
+  async function fetchSourceHtml(url, say){
+    /* Try the proxy that worked last on its own first — once one is known good
+       this makes every chapter fetch a single request instead of a race. */
+    if(srcPreferredProxy){
+      const preferred = srcProxyOrder()[0];
+      try{ return await srcTryProxy(preferred, url); }catch(_){}
+    }
+    const controllers = [];
+    let settled = false;
+    const attempt = async src => {
+      const result = await srcTryProxy(src, url, ctl => controllers.push(ctl));
+      if(!settled){
+        settled = true;
+        srcPreferredProxy = src.name;
+        controllers.forEach(c => { try{ c.abort(); }catch(_){} });
+      }
+      return result;
+    };
+    const runs = srcProxyOrder().map(src =>
+      new Promise(r => setTimeout(r, src.delay || 0))
+        .then(() => settled ? Promise.reject(new Error(src.name + ': skipped')) : attempt(src))
+    );
+    const html = await Promise.any(runs);
+    if(say) say('');
+    return html;
+  }
+
+  function srcAbsUrl(href, base){
+    if(!href) return '';
+    try{ return new URL(href, base).href; }catch(_){ return ''; }
+  }
+
+  function parseSourceSearch(html, base){
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const out = [];
+    const seen = new Set();
+    doc.querySelectorAll('a[href$=".html"][title]').forEach(a => {
+      const title = (a.getAttribute('title') || '').trim();
+      const url = srcAbsUrl(a.getAttribute('href'), base);
+      if(!title || !url || url.includes('/chapter-') || seen.has(url)) return;
+      seen.add(url);
+      /* Result rows put the cover in a sibling column — search the row. */
+      const row = a.closest('.row, li, article') || a.parentElement;
+      const img = row ? row.querySelector('img') : null;
+      const cover = img ? srcAbsUrl(img.getAttribute('src') || img.getAttribute('data-src') || '', base) : '';
+      out.push({ title, url, cover });
+    });
+    return out.slice(0, 30);
+  }
+
+  function srcChapterNum(href){
+    const m = (href || '').match(/chapter-(\d+)/);
+    return m ? +m[1] : 0;
+  }
+
+  function parseSourceNovel(html, base){
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const links = [...doc.querySelectorAll('.list-chapter a[href]')].map(a => srcAbsUrl(a.getAttribute('href'), base)).filter(Boolean);
+    /* The site lists chapters newest-first — restore reading order. */
+    links.sort((a, b) => srcChapterNum(a) - srcChapterNum(b));
+    /* The list shows 50 chapters per ?page=N — find how many pages exist. */
+    const pages = [...html.matchAll(/href="[^"]*\?page=(\d+)[^"]*"/g)].map(m => +m[1]);
+    const maxPage = pages.length ? Math.max(...pages) : 1;
+    return { links, maxPage: Math.max(1, maxPage) };
+  }
+
+  /* Fetch more ?page=N list pages until the chapter links cover the range. */
+  async function srcEnsureChapters(novel, need){
+    while(novel.links.length < need && novel.maxPage > novel.loadedPages){
+      novel.loadedPages += 1;
+      const html = await fetchSourceHtml(novel.url + '?page=' + novel.loadedPages);
+      const more = parseSourceNovel(html, novel.base).links;
+      const seen = new Set(novel.links);
+      more.forEach(u => { if(!seen.has(u)){ seen.add(u); novel.links.push(u); } });
+      novel.links.sort((a, b) => srcChapterNum(a) - srcChapterNum(b));
+    }
+  }
+
+  function srcChapterTitleFrom(doc){
+    const el = doc.querySelector('#chapter-title') || doc.querySelector('.tr-title');
+    if(el && el.textContent.trim()) return el.textContent.trim();
+    const t = doc.title || '';
+    let m = t.match(/-\s*Chapter\s+[\dIVXLCivxlc]+\s*-\s*(.+?)\s+online free/i);
+    if(m) return m[1].trim();
+    m = t.match(/Chapter\s+[\dIVXLCivxlc]+\s*[:–-]\s*(.+?)(\s+online free.*|$)/i);
+    return m ? m[1].trim() : '';
+  }
+
+  function parseSourceChapter(html){
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const node = doc.querySelector('#chapter-content') || doc.body;
+    node.querySelectorAll('script,style,ins,iframe,.chapter-nav,.adsbygoogle,[class*="ads"],[id*="ads"]').forEach(n => n.remove());
+    const paras = [...node.querySelectorAll('p')].map(p => p.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const text = paras.length ? paras.join('\n\n') : node.textContent.replace(/[ \t]+\n/g, '\n').trim();
+    return { title: srcChapterTitleFrom(doc), text };
+  }
+
+  async function openSourceNovel(source, item){
+    $("srcStatus").textContent = `Loading “${item.title}”…`;
+    try{
+      const html = await fetchSourceHtml(item.url, msg => $("srcStatus").textContent = msg);
+      const novel = parseSourceNovel(html, source.base);
+      srcCurrentNovel = { base: source.base, title: item.title, url: item.url, cover: item.cover, links: novel.links, loadedPages: 1, maxPage: novel.maxPage };
+      $("srcResults").style.display = 'none';
+      $("srcNovelPanel").hidden = false;
+      $("srcNovelTitle").textContent = item.title;
+      $("srcNovelCount").textContent = novel.links.length
+        ? (novel.maxPage > 1 ? `${novel.links.length}+ chapters available` : `${novel.links.length} chapters available`)
+        : 'No chapter list was found on the page.';
+      const coverImg = $("srcNovelCover");
+      if(item.cover){ coverImg.src = item.cover; coverImg.hidden = false; } else coverImg.hidden = true;
+      $("srcFrom").value = 1;
+      $("srcTo").value = Math.min(10, novel.links.length);
+      $("srcImportStatus").textContent = '';
+      $("srcStatus").textContent = '';
+    }catch(e){
+      $("srcStatus").textContent = 'Could not load that novel. (' + e.message + ')';
+    }
+  }
+
+  function saveImportedNovel(novel, chapters){
+    const book = addBook(novel.title, chapters);
+    srcCurrentNovel = null;
+    closeModals();
+    openBook(book.id, {resume:false});
+    toast(`Imported ${chapters.length} chapters of “${novel.title}”.`);
+  }
+
+  async function importSourceChapters(){
+    const novel = srcCurrentNovel;
+    if(!novel || !novel.links.length){ toast('Open a novel first.'); return; }
+    const from = Math.max(1, +$("srcFrom").value || 1);
+    let to = Math.max(from, +$("srcTo").value || from + 9);
+    if(to - from + 1 > 150){ toast('Import up to 150 chapters at a time.'); return; }
+    /* Fetch enough list pages to cover the requested range. */
+    try{ await srcEnsureChapters(novel, to); }catch(e){
+      if(novel.links.length < from){
+        $("srcImportStatus").textContent = 'Could not load the chapter list page. (' + e.message + ')';
+        return;
+      }
+      to = Math.min(to, novel.links.length);
+    }
+    to = Math.min(to, novel.links.length);
+    srcImportStop = false;
+    $("btnSrcStop").hidden = false;
+    $("btnSrcStop").disabled = false;
+    const token = progressShow(`Importing ${novel.title}…`, 5);
+    const chapters = [];
+    try{
+      for(let i = from; i <= to; i++){
+        if(srcImportStop) break;
+        progressSet(Math.round((i - from) / (to - from + 1) * 100), `Fetching chapter ${i} of ${to}…`);
+        $("srcImportStatus").textContent = `Importing chapter ${i} of ${to}…`;
+        const html = await fetchSourceHtml(novel.links[i - 1]);
+        const { title: chTitle, text } = parseSourceChapter(html);
+        if(text && text.length > 40) chapters.push({ title: chTitle || `Chapter ${i}`, text });
+      }
+    }catch(e){
+      progressEnd('Import failed', token);
+      $("btnSrcStop").hidden = true;
+      $("srcImportStatus").textContent = 'Import stopped: ' + e.message;
+      if(chapters.length) saveImportedNovel(novel, chapters);
+      return;
+    }
+    $("btnSrcStop").hidden = true;
+    progressEnd(chapters.length ? 'Chapters imported' : 'Import failed', token);
+    if(!chapters.length){
+      $("srcImportStatus").textContent = 'No readable chapters were found.';
+      return;
+    }
+    saveImportedNovel(novel, chapters);
+  }
+
+  $("btnSources").onclick = () => {
+    if(!$("srcSource").options.length){
+      NOVEL_SOURCES.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id; opt.textContent = s.name;
+        $("srcSource").appendChild(opt);
+      });
+    }
+    openModal("modalSources");
+  };
+  $("btnSrcSearch").onclick = async () => {
+    const source = NOVEL_SOURCES.find(s => s.id === $("srcSource").value) || NOVEL_SOURCES[0];
+    const q = $("srcQuery").value.trim();
+    if(!q){ toast('Type something to search for.'); return; }
+    $("srcStatus").textContent = `Searching ${source.name} for “${q}”…`;
+    $("srcResults").innerHTML = '';
+    $("srcResults").style.display = '';
+    $("srcNovelPanel").hidden = true;
+    try{
+      const html = await fetchSourceHtml(source.base + '/search?keyword=' + encodeURIComponent(q),
+        msg => $("srcStatus").textContent = msg);
+      const results = parseSourceSearch(html, source.base);
+      if(!results.length){
+        $("srcStatus").textContent = `No novels matched “${q}” on ${source.name}.`;
+        return;
+      }
+      $("srcStatus").textContent = `${results.length} results from ${source.name} — pick a novel.`;
+      $("srcResults").innerHTML = '';
+      results.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'src-card';
+        if(item.cover){
+          const img = document.createElement('img');
+          img.loading = 'lazy';
+          img.onerror = () => img.remove();
+          img.src = item.cover;
+          card.appendChild(img);
+        }
+        const t = document.createElement('span');
+        t.className = 't';
+        t.textContent = item.title;
+        card.appendChild(t);
+        card.onclick = () => openSourceNovel(source, item);
+        $("srcResults").appendChild(card);
+      });
+    }catch(e){
+      $("srcStatus").textContent = 'Search failed — every fetch route is busy or blocked right now. Try again in a moment. (' + e.message + ')';
+    }
+  };
+  $("srcQuery").addEventListener('keydown', e => { if(e.key === 'Enter') $("btnSrcSearch").click(); });
+  $("btnSrcBack").onclick = () => {
+    $("srcNovelPanel").hidden = true;
+    $("srcResults").style.display = '';
+  };
+  $("btnSrcImport").onclick = importSourceChapters;
+  $("btnSrcStop").onclick = () => { srcImportStop = true; $("btnSrcStop").disabled = true; };
   $("libSearch").oninput = renderLibrary;
   $("libSort").onchange = renderLibrary;
   $("libImport").onclick = () => $("fileInput").click();
   $("libPaste").onclick = () => { closeModals(); openModal("modalPaste"); };
   $("libWeb").onclick = () => { closeModals(); openModal("modalWeb"); };
+  $("libSources").onclick = () => { closeModals(); $("btnSources").onclick(); };
+  $("libClear").onclick = async () => {
+    if(!library.length && !bookmarks.length){ toast("Nothing stored to clear."); return; }
+    if(!confirm("Delete ALL stored books, bookmarks and reading progress from this device? This cannot be undone — make a Backup first.")) return;
+    if(S.playing || S.paused) stopPlayback();
+    library = []; bookmarks = [];
+    try{
+      localStorage.removeItem("upr.library");
+      localStorage.removeItem("upr.bookmarks");
+      localStorage.removeItem("upr.progress");
+      localStorage.removeItem("upr.lastBook");
+    }catch(e){}
+    const db = await idb();
+    if(db){ try{ const tx = db.transaction("texts", "readwrite"); tx.objectStore("texts").clear(); }catch(e){} }
+    saveLibrary(); saveBookmarks(); renderLibrary();
+    toast("All stored books and progress cleared from this device.");
+  };
   $("libraryList").addEventListener("click", e => {
     // 1. Rename controls
     const renameBookBtn = e.target.closest("[data-rename-book]");

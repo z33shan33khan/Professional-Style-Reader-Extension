@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Ultra Pro Reader",
-  "version": "1.1.0",
-  "description": "Read-aloud novel reader — free offline AI voices (Piper), epub/pdf/txt imports, reads any website aloud, cinema reading environment. 100% local and private.",
-  "permissions": ["storage", "contextMenus", "activeTab", "scripting", "tabs"],
+  "version": "1.2.0",
+  "description": "Read-aloud novel reader — free offline AI voices (Piper), epub/pdf/txt imports, reads any website aloud, browse web-novel sources, cinema reading environment. 100% local and private.",
+  "permissions": ["storage", "unlimitedStorage", "contextMenus", "activeTab", "scripting", "tabs"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
   "content_security_policy": {
