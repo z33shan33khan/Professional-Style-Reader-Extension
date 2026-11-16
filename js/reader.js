@@ -1704,32 +1704,141 @@ function saveRename(){
   toast(`Renamed to “${val}”.`);
 }
 /* Only merge pages that share a chapter-style novel URL, e.g. /novel/x/chapter-12. */
-function webNovelKey(url){
+/* Novel sites from the user's list (novels.txt) — power the quick links and
+   grouping heuristics. Sites that refuse plain fetches (bot protection,
+   JS-rendered readers) are opened through the live-tab reader right away. */
+const NOVEL_SITES = [
+  ["AllNovel", "https://allnovel.org"],
+  ["Anna's Archive", "https://annas-archive.org"],
+  ["BestLightNovel", "https://bestlightnovel.com"],
+  ["Chrysanthemum Garden", "https://chrysanthemumgarden.com"],
+  ["FanMTL", "https://www.fanmtl.com"],
+  ["Fenrir Realm", "https://fenrirealm.com"],
+  ["Kol Novel", "https://free.kolnovel.com"],
+  ["FreeWebNovel", "https://freewebnovel.com"],
+  ["FuckNovelPia", "https://fucknovelpia.com"],
+  ["Gray City", "https://graycity.net"],
+  ["Hiraeth Translation", "https://hiraethtranslation.com"],
+  ["IndoWebNovel", "https://indowebnovel.id"],
+  ["Libread", "https://libread.com"],
+  ["Light Novels Translations", "https://lightnovelstranslations.com"],
+  ["Light Novel World", "https://lightnovelworld.org"],
+  ["LNMTL", "https://lnmtl.com"],
+  ["Meio Novels", "https://meionovels.com"],
+  ["MTLNovel", "https://mtlnovel.me"],
+  ["No Bad Novel", "https://www.nobadnovel.com"],
+  ["NovelBin", "https://novelbin.com"],
+  ["NovelBuddy", "https://novelbuddy.com"],
+  ["NovelFire", "https://novelfire.net"],
+  ["NovelFull", "https://novelfull.com"],
+  ["NovelsOnline", "https://novelsonline.org"],
+  ["Novlove", "https://novlove.com"],
+  ["PawRead", "https://pawread.com"],
+  ["ReadFrom", "https://readfrom.net"],
+  ["ReadNovelFull", "https://readnovelfull.com"],
+  ["ReadOnlineFreeBook", "https://readonlinefreebook.com"],
+  ["Rewayat Club", "https://rewayat.club"],
+  ["RiseNovel", "https://risenovel.com"],
+  ["Royal Road", "https://www.royalroad.com"],
+  ["Sakura Novel", "https://sakuranovel.id"],
+  ["ScribbleHub", "https://www.scribblehub.com"],
+  ["Skynovels", "https://www.skynovels.net"],
+  ["SonicMTL", "https://www.sonicmtl.com"],
+  ["WTR-Lab", "https://wtr-lab.com"],
+  ["Wuxia.click", "https://wuxia.click"],
+  ["WuxiaBox", "https://www.wuxiabox.com"]
+];
+const NOVEL_SITE_HOSTS = new Set(NOVEL_SITES.map(([, u]) => webHostOf(u)).filter(Boolean));
+/* These block or JS-hide plain fetches — go straight to the live-tab reader. */
+const GRAB_FIRST_HOSTS = new Set([
+  "wtr-lab.com", "wuxia.click", "wuxiabox.com", "royalroad.com", "scribblehub.com",
+  "lightnovelworld.com", "lightnovelworld.org", "lightnovelstranslations.com",
+  "chrysanthemumgarden.com", "freewebnovel.com", "novelbin.com", "novelfire.net",
+  "fanmtl.com", "mtlnovel.me", "bestlightnovel.com", "allnovel.org",
+  "novelsonline.org", "readfrom.net", "libread.com", "indowebnovel.id",
+  "sakuranovel.id", "meionovels.com", "rewayat.club", "graycity.net",
+  "fenrirealm.com", "hiraethtranslation.com", "novlove.com", "pawread.com",
+  "novelbuddy.com", "sonicmtl.com", "risenovel.com", "readnovelfull.com",
+  "readonlinefreebook.com", "nobadnovel.com", "fucknovelpia.com", "kolnovel.com",
+  "skynovels.net", "lnmtl.com", "annas-archive.org"
+]);
+/* Hosts where a plain fetch already worked this session skip the live-tab path. */
+const webFetchOkHosts = new Set();
+
+/* Strip tracking params, fragments and www. so the same page always keys
+   the same, no matter which button (toolbar / menu / auto-continue) added it. */
+function canonicalWebUrl(raw){
+  const u = normalizeUrl(raw);
+  if(!u) return "";
   try{
-    const u = new URL(url);
-    if(/(?:chapter|chap|ch)[-_\/]?\d+/i.test(u.pathname)){
-      const p = u.pathname.replace(/(?:\/)?(?:chapter|chap|ch)[-_\/]?\d+[^\/]*$/i, '/');
-      return u.origin + p;
+    const x = new URL(u);
+    const keep = [];
+    x.searchParams.forEach((v, k) => {
+      if(!/^(utm_|fbclid$|gclid$|msclkid$|ref$|referrer$|source$|spm$|from$|scid$|share)/i.test(k)) keep.push(k + "=" + v);
+    });
+    x.search = keep.length ? "?" + keep.join("&") : "";
+    x.hash = "";
+    x.hostname = x.hostname.replace(/^www\./, "");
+    x.pathname = x.pathname.replace(/\/+$/, "") || "/";
+    return x.href;
+  }catch(_){ return u; }
+}
+function webHostOf(url){
+  try{ return new URL(normalizeUrl(url)).hostname.replace(/^www\./, "").toLowerCase(); }catch(_){ return ""; }
+}
+function webSameHost(a, b){ const x = webHostOf(a), y = webHostOf(b); return !!x && x === y; }
+
+function webNovelKey(url){
+  const u = canonicalWebUrl(url);
+  if(!u) return "";
+  try{
+    const x = new URL(u);
+    const host = x.hostname.replace(/^www\./, "");
+    const segs = x.pathname.split("/").filter(Boolean);
+    const known = NOVEL_SITE_HOSTS.has(host);
+    /* 1. A chapter/episode marker near the end anchors the novel. */
+    for(let i = segs.length - 1; i >= Math.max(0, segs.length - 2); i--){
+      if(/^(?:chapter|chap|ch|episode|ep|part|cap)[-_]?[-.\d]/i.test(segs[i])){
+        return host + "/" + segs.slice(0, i).join("/");
+      }
     }
-    // Numeric chapter pages such as /novel/name/12345
-    const parts = u.pathname.split('/').filter(Boolean);
-    const last = parts[parts.length - 1] || '';
-    const novelish = parts.slice(0, -1).some(p => /^(novel|novels|book|books|read|reading|story|stories|fiction|series)$/i.test(p));
-    if(novelish && parts.length >= 3 && /\d/.test(last)){
-      return u.origin + '/' + parts.slice(0, -1).join('/') + '/';
+    /* 2. A trailing numeric id under a novel-ish path (or a known novel site). */
+    const last = segs[segs.length - 1] || "";
+    if(segs.length >= 2 && /^\d/.test(last)){
+      const novelish = segs.slice(0, -1).some(s => /^(novel|novels|book|books|read|reading|story|stories|fiction|series|serial|mtl|wtr|light-novel|lightnovel|ln|wn)/i.test(s));
+      if(novelish || known) return host + "/" + segs.slice(0, -1).join("/");
     }
+    /* 3. ".html" chapter files on known novel sites — drop just the file. */
+    if(known && /\.x?html?$/i.test(last) && segs.length >= 2) return host + "/" + segs.slice(0, -1).join("/");
   }catch(_){}
-  return url;
+  return u;
+}
+/* The novel's own name, derived from a chapter page title:
+   "Super Devouring System Chapter 1072 - W…" → "super devouring system". */
+function novelNameFromTitle(title){
+  const t = String(title || "").trim();
+  if(!t) return "";
+  const m = /^(.*?)[\s\-–—:|]*(?:chapter|chap|ch\.?|episode|ep\.?|part|cap|vol|volume|卷|章)\s*[\dIVXLCivxl.]+/i.exec(t);
+  /* No chapter marker → the novel name can't be derived from this title. */
+  if(!(m && m[1].trim().length >= 3)) return "";
+  const name = m[1].trim().replace(/\s*[-–—|]\s*(?:page|site|read|online).*$/i, "").trim();
+  return name.toLowerCase().replace(/\s+/g, " ");
+}
+function novelNameDisplay(title){
+  const t = String(title || "").trim();
+  const m = /^(.*?)[\s\-–—:|]*(?:chapter|chap|ch\.?|episode|ep\.?|part|cap|vol|volume)\s*[\dIVXLCivxl.]+/i.exec(t);
+  return (m && m[1].trim().length >= 3) ? m[1].trim() : "";
+}
+function chapterNumOf(c){
+  const s = ((c && c.title) || "") + " " + ((c && c.url) || "");
+  const m = /(?:chapter|chap|ch|episode|ep|part|cap)[\s\-_/:]*(\d+(?:\.\d+)?)/i.exec(s) || /\/(\d+)(?:[\/?#]|$)/.exec((c && c.url) || "");
+  return m ? parseFloat(m[1]) : NaN;
 }
 function sameUrl(a, b){
   if(!a || !b) return false;
   if(a === b) return true;
-  try{
-    const x = new URL(a, location.href), y = new URL(b, location.href);
-    return x.origin === y.origin
-      && x.pathname.replace(/\/+$/, "") === y.pathname.replace(/\/+$/, "")
-      && x.search === y.search;
-  }catch(_){ return false; }
+  const x = canonicalWebUrl(a), y = canonicalWebUrl(b);
+  return !!x && x === y;
 }
 function webChapterTitle(parsed, url){
   const page = safeTitle(parsed.pageTitle || "");
@@ -1757,18 +1866,33 @@ function syncWebChapter(){
 }
 /* Keep every web chapter in one Library entry instead of replacing the page. */
 function persistWebBook(book, keepId){
-  let existing = keepId ? library.find(b => b.id === keepId) : library.find(b => b.id === book.id);
-  if(!existing && book.webUrl){
-    const key = webNovelKey(book.webUrl);
-    existing = library.find(b => b.source === "web" && b.webUrl && webNovelKey(b.webUrl) === key);
-  }
   const chapter = Object.assign({}, (book.chapters && book.chapters[0]) || {});
   chapter.title = chapter.title || book.title || "Chapter";
   chapter.text = chapter.text || "";
-  chapter.url = book.webUrl || chapter.url || "";
+  chapter.url = canonicalWebUrl(book.webUrl || chapter.url || "");
   chapter.next = book.webNextUrl || "";
   chapter.prev = book.webPrevUrl || "";
+  /* Find the book this chapter belongs to: the exact book, then any book from
+     the same novel (same site + same novel URL), then same site + same novel
+     name from the page title. One novel = one library entry. */
+  let existing = keepId ? library.find(b => b.id === keepId) : library.find(b => b.id === book.id);
+  if(!existing && chapter.url){
+    const key = webNovelKey(chapter.url);
+    existing = library.find(b => b.source === "web" && b.webUrl && webNovelKey(b.webUrl) === key);
+    if(!existing){
+      const name = novelNameFromTitle(book.title || chapter.title);
+      if(name){
+        existing = library.find(b => b.source === "web"
+          && novelNameFromTitle(b.title) === name
+          && webSameHost(b.webUrl || (b.chapters && b.chapters[0] && b.chapters[0].url), chapter.url));
+      }
+    }
+  }
   if(!existing){
+    book.webUrl = chapter.url;
+    /* Title the book after the novel, not the chapter. */
+    const display = novelNameDisplay(book.title || chapter.title);
+    if(display) book.title = display;
     book.chapters = [chapter];
     library.unshift(book); saveLibrary();
     return {book, chapterIdx: 0};
@@ -1781,7 +1905,11 @@ function persistWebBook(book, keepId){
     existing.chapters[0].prev = existing.chapters[0].prev || existing.webPrevUrl || "";
   }
   let idx = existing.chapters.findIndex(c => sameUrl(c.url, chapter.url));
-  if(idx < 0 && chapter.url) idx = existing.chapters.findIndex(c => !c.url && c.title === chapter.title);
+  /* Title dedupe only when the title is chapter-specific — never when it is
+     just the novel name repeated (that would merge different chapters). */
+  if(idx < 0 && chapter.title && chapter.title !== "Chapter" && novelNameFromTitle(chapter.title)){
+    idx = existing.chapters.findIndex(c => c.title === chapter.title);
+  }
   if(idx >= 0){
     const old = existing.chapters[idx];
     const merged = Object.assign({}, old, chapter, {url: chapter.url || old.url});
@@ -1795,9 +1923,62 @@ function persistWebBook(book, keepId){
   existing.webUrl = chapter.url || existing.webUrl;
   existing.webNextUrl = chapter.next || "";
   existing.webPrevUrl = chapter.prev || "";
-  if(!existing.title || /^(untitled|new tab)$/i.test(existing.title)) existing.title = book.title;
+  /* Rename a chapter-named book to the novel's name. */
+  const name = novelNameFromTitle(book.title || chapter.title);
+  const display = novelNameDisplay(book.title || chapter.title);
+  if(name && display && novelNameFromTitle(existing.title) === name) existing.title = display;
+  else if(!existing.title || /^(untitled|new tab)$/i.test(existing.title)) existing.title = book.title;
   saveLibrary();
   return {book: existing, chapterIdx: idx};
+}
+
+/* Library cleanup: fold per-chapter web entries created by older versions into
+   one book per novel (same site + same novel name), deduping chapters. */
+function mergeWebBookDuplicates(){
+  const groups = new Map();
+  for(const b of library){
+    if(b.source !== "web"){ continue; }
+    const url = b.webUrl || (b.chapters && b.chapters[0] && b.chapters[0].url) || "";
+    const name = novelNameFromTitle(b.title);
+    const host = webHostOf(url);
+    const gk = (name && host) ? "n:" + host + "/" + name
+             : (url ? "u:" + webNovelKey(url) : "solo:" + b.id);
+    if(!groups.has(gk)) groups.set(gk, []);
+    groups.get(gk).push(b);
+  }
+  let folded = 0;
+  for(const list of groups.values()){
+    if(list.length < 2) continue;
+    /* Keep the entry with the most chapters (earliest added on ties). */
+    list.sort((a, b) => ((b.chapters || []).length - (a.chapters || []).length) || ((a.added || 0) - (b.added || 0)));
+    const keep = list[0];
+    for(const src of list.slice(1)){
+      (src.chapters || []).forEach(c => {
+        /* Chapter-specific titles may dedupe; the plain novel name may not. */
+        const distinctive = c.title && novelNameFromTitle(c.title);
+        const dup = keep.chapters.some(x =>
+          sameUrl(x.url, c.url) ||
+          (distinctive && x.title === c.title && c.title !== "Chapter"));
+        if(!dup) keep.chapters.push(c);
+      });
+      keep.chapters.sort((a, b) => {
+        const x = chapterNumOf(a), y = chapterNumOf(b);
+        return (isNaN(x) || isNaN(y)) ? 0 : x - y;
+      });
+      const display = novelNameDisplay(keep.title) || novelNameDisplay(src.title);
+      if(display) keep.title = display;
+      if(!keep.webUrl && src.webUrl) keep.webUrl = src.webUrl;
+      if(!keep.webNextUrl && src.webNextUrl) keep.webNextUrl = src.webNextUrl;
+      if(!keep.webPrevUrl && src.webPrevUrl) keep.webPrevUrl = src.webPrevUrl;
+      const i = library.indexOf(src);
+      if(i >= 0) library.splice(i, 1);
+      folded++;
+    }
+  }
+  if(folded){
+    saveLibrary(); renderLibrary();
+    toast(`Grouped ${folded} web chapter entr${folded === 1 ? "y" : "ies"} into their novels.`);
+  }
 }
 function openBook(id, opts = {}){
   const book = library.find(b => b.id === id);
@@ -2603,7 +2784,7 @@ async function readWebPageAsBook(opts = {}){
     toast('Not enough text on that page to read.');
     return;
   }
-  const id = 'web:' + tab.url;
+  const id = 'web:' + (canonicalWebUrl(tab.url) || tab.url);
   const chapterTitle = webChapterTitle(parsed, tab.url);
   const book = {
     id, title: parsed.title || chapterTitle, source: 'web',
@@ -2683,7 +2864,7 @@ function webBookFromGrab(url, item, opts = {}){
   if(text.length < 60) return false;
   const chapterTitle = (item.title || '').trim() || 'Chapter';
   const book = {
-    id: 'web:' + url, title: chapterTitle, source: 'web',
+    id: 'web:' + (canonicalWebUrl(url) || url), title: chapterTitle, source: 'web',
     chapters: [{ title: chapterTitle, text, url }],
     webUrl: url,
     webNextUrl: item.next || guessSiblingChapter(url, +1) || '',
@@ -2703,21 +2884,36 @@ async function loadWebBook(url, opts = {}){
     await importEpubsFromUrls([normalized], opts);
     return;
   }
+  const host = webHostOf(normalized);
+  /* Protective / JS-only sites skip the doomed plain-fetch attempt and go
+     straight to the live-tab reader. Hosts that fetched fine this session
+     keep the fast path. */
+  const grabFirst = GRAB_FIRST_HOSTS.has(host) && !webFetchOkHosts.has(host);
+  const grabFallback = async () => {
+    if(stopToken !== null && stopToken !== playbackStopToken) return true;
+    setStatus('Trying the live-tab reader…');
+    const item = await grabViaTabBridge(normalized);
+    if(stopToken !== null && stopToken !== playbackStopToken) return true;
+    if(item && item.kind === 'epub'){ await importEpubsFromUrls(item.epubUrls, opts); return true; }
+    if(item && webBookFromGrab(normalized, item, opts)) return true;
+    return false;
+  };
+  if(grabFirst){
+    const handled = await grabFallback();
+    if(handled) return;
+    setStatus('Live-tab read failed — trying a direct fetch…');
+  }
   try{
     const { parsed } = await fetchPageHtml(normalized, (m) => setStatus(m), { strict: false });
     if(stopToken !== null && stopToken !== playbackStopToken) return;
+    webFetchOkHosts.add(host);
     if(!parsed.text || parsed.text.length < 60){
-      /* Site refuses plain fetches (JS-rendered readers) → hidden-tab grab */
-      setStatus('Trying the live-tab reader…');
-      const item = await grabViaTabBridge(normalized);
-      if(stopToken !== null && stopToken !== playbackStopToken) return;
-      if(item && item.kind === 'epub'){ await importEpubsFromUrls(item.epubUrls, opts); return; }
-      if(item && webBookFromGrab(normalized, item, opts)) return;
+      if(await grabFallback()) return;
       setStatus('Ready'); toast('Not enough text on that page.'); return;
     }
     const chapterTitle = webChapterTitle(parsed, normalized);
     const book = {
-      id: 'web:' + normalized, title: parsed.title || chapterTitle, source: 'web',
+      id: 'web:' + (canonicalWebUrl(normalized) || normalized), title: parsed.title || chapterTitle, source: 'web',
       chapters: [{ title: chapterTitle, text: parsed.text }],
       webUrl: normalized,
       webNextUrl: parsed.next || guessSiblingChapter(normalized, +1) || '',
@@ -2727,12 +2923,7 @@ async function loadWebBook(url, opts = {}){
     await openWebBookObject(book, opts);
   }catch(e){
     if(stopToken !== null && stopToken !== playbackStopToken) return;
-    /* Fetch failed entirely (CORS/403 etc.) → hidden-tab grab fallback */
-    setStatus('Trying the live-tab reader…');
-    const item = await grabViaTabBridge(normalized);
-    if(stopToken !== null && stopToken !== playbackStopToken) return;
-    if(item && item.kind === 'epub'){ await importEpubsFromUrls(item.epubUrls, opts); return; }
-    if(item && webBookFromGrab(normalized, item, opts)) return;
+    if(await grabFallback()) return;
     setStatus('Ready');
     toast('Could not load page. Try again, or paste the chapter text with 📋. (' + e.message + ')');
   }
@@ -3800,6 +3991,19 @@ function init(){
   // Speed dial
   $("speedDial").innerHTML = SPEED_DIAL_LINKS.map(([e,n,u]) =>
     `<button data-target="${esc(u)}"><span class="sd-icon">${e}</span><span>${esc(n)}</span></button>`).join("");
+  /* The full novel-site list (novels.txt) — collapsible under the dial */
+  $("novelSites").innerHTML = NOVEL_SITES.map(([n, u]) =>
+    `<button data-target="${esc(u)}" title="${esc(u)}"><span class="sd-icon">📖</span><span>${esc(n)}</span></button>`).join("");
+  $("novelSitesToggle").onclick = () => {
+    const box = $("novelSites");
+    box.hidden = !box.hidden;
+    $("novelSitesToggle").textContent = box.hidden ? "📖 All novel sites (39)" : "▴ Hide novel sites";
+  };
+  $("novelSites").addEventListener("click", e => {
+    const b = e.target.closest("[data-target]");
+    if(!b) return;
+    navigate(activeTab() || newTab(), b.dataset.target);
+  });
 
   seedLibrary();
   applyAppearance();
@@ -3841,6 +4045,8 @@ function init(){
   const readId = urlParams.get("read");
   if(cinemaMode === "pip" && window.opener){ cinemaMode = "tab"; try{ localStorage.setItem("urCinemaMode", "tab"); }catch(e){} }
   hydrateLibrary().then(() => {
+    /* Fold the per-chapter web entries old versions created into one book per novel. */
+    mergeWebBookDuplicates();
     const target = (readId && library.find(b => b.id === readId)) || library.find(b => b.id === last) || library[0];
     if(target) openBook(target.id);
     else switchPane("reader");
@@ -4317,6 +4523,10 @@ function init(){
     return fetch(src.build(url), { ...(src.headers ? { headers: src.headers } : {}), signal: ctl.signal })
       .then(res => { if(!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
       .then(body => {
+        /* Sites ship inline onclick= handlers; parsing them inside the
+           extension page trips the extension CSP — strip them up front. */
+        body = body.replace(/<script\b[\s\S]*?<\/script>/gi, '')
+                   .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
         if(body.length < 2000 || !/<(html|body|div|p)[\s>]/i.test(body.slice(0, 8000))) throw new Error('unusable response');
         if(/just a moment|cf-browser-verification|enable javascript and cookies|attention required/i.test(body.slice(0, 4000))) throw new Error('blocked by bot protection');
         return body;
@@ -4505,8 +4715,20 @@ function init(){
         opt.value = s.id; opt.textContent = s.name;
         $("srcSource").appendChild(opt);
       });
+      NOVEL_SITES.forEach(([n, u]) => {
+        const opt = document.createElement('option');
+        opt.value = u; opt.textContent = n;
+        $("srcMoreSites").appendChild(opt);
+      });
     }
     openModal("modalSources");
+  };
+  $("btnSrcMoreOpen").onclick = () => {
+    const u = $("srcMoreSites").value;
+    if(!u) return;
+    closeModals();
+    switchPane("website");
+    navigate(activeTab() || newTab(), u);
   };
   $("btnSrcSearch").onclick = async () => {
     const source = NOVEL_SOURCES.find(s => s.id === $("srcSource").value) || NOVEL_SOURCES[0];

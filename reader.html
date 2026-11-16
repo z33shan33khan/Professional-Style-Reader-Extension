@@ -314,6 +314,8 @@ footer{max-width:980px;margin:0 auto;padding:0 18px 26px;display:flex;align-item
 .src-novel-head{display:flex;gap:12px;align-items:flex-start}
 .src-novel-head img{width:74px;height:100px;object-fit:cover;border-radius:9px;background:var(--surface2)}
 .src-novel-head h4{font-family:'Literata',serif;font-size:16px;margin:0 0 4px}
+.src-more{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding-top:10px}
+.src-more select{flex:1}
 .lib-toolbar{display:flex;gap:8px;flex-wrap:wrap}
 .lib-toolbar input{flex:1;min-width:140px}
 .lib-toolbar select{width:auto}
@@ -761,6 +763,8 @@ body.pip-window .reader-card{margin:54px auto 96px;max-width:900px;width:calc(10
       <div class="browser-start" id="browserStart">
         <h3 style="font-family:'Literata',serif;font-size:16px;margin-bottom:12px">Quick links</h3>
         <div class="speed-dial" id="speedDial"></div>
+        <div class="speed-dial" id="novelSites" hidden style="margin-top:10px"></div>
+        <button class="btn" id="novelSitesToggle" style="margin-top:10px;width:100%">📖 All novel sites (39)</button>
         <p class="hint" style="margin-top:14px">
           <b>Reader view</b> shows a clean copy of any page and works on most sites.
           <b>Live</b> runs the real site (needed for signing in), but many sites refuse to appear inside other apps.
@@ -1153,6 +1157,10 @@ body.pip-window .reader-card{margin:54px auto 96px;max-width:900px;width:calc(10
       </div>
       <div id="srcStatus" class="hint"></div>
       <div id="srcResults" class="src-results"></div>
+      <div class="src-more">
+        <select id="srcMoreSites" title="More novel sites — opened in the Website tab"></select>
+        <button class="btn" id="btnSrcMoreOpen">Open site ↗</button>
+      </div>
       <div id="srcNovelPanel" hidden>
         <button class="btn" id="btnSrcBack">← Back to results</button>
         <div class="src-novel-head">
@@ -1204,7 +1212,7 @@ body.pip-window .reader-card{margin:54px auto 96px;max-width:900px;width:calc(10
 <div id="toasts"></div>
 <input type="file" id="fileInput" accept=".txt,.md,.html,.htm,.epub,.pdf" multiple hidden>
 
-<script src="js/reader.js?v=2"></script>
+<script src="js/reader.js?v=3"></script>
 <script type="module" src="js/piper.js?v=2"></script>
 </body>
 </html>
