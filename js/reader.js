@@ -1799,7 +1799,15 @@ function webNovelKey(url){
     /* 1. A chapter/episode marker near the end anchors the novel. */
     for(let i = segs.length - 1; i >= Math.max(0, segs.length - 2); i--){
       if(/^(?:chapter|chap|ch|episode|ep|part|cap)[-_]?[-.\d]/i.test(segs[i])){
-        return host + "/" + segs.slice(0, i).join("/");
+        /* RoyalRoad-style /chapter/<id>/<chapter-slug>: the numeric id that
+           trails a bare "chapter" segment is the chapter number, not part of
+           the novel path — strip both so all chapters share one key. */
+        let end = i;
+        while(end >= 2 && /^\d+$/.test(segs[end - 1]) &&
+              /^(?:chapter|chap|ch|episode|ep|part|cap)$/i.test(segs[end - 2])){
+          end -= 2;
+        }
+        return host + "/" + segs.slice(0, end).join("/");
       }
     }
     /* 2. A trailing numeric id under a novel-ish path (or a known novel site). */
@@ -1842,7 +1850,7 @@ function sameUrl(a, b){
 }
 function webChapterTitle(parsed, url){
   const page = safeTitle(parsed.pageTitle || "");
-  let m = /(?:chapter|chap|ch\.?|episode|part|book|volume)\s*[\d.]+[^\n|]*/i.exec(page);
+  let m = /(?:chapter|chap|ch\.?|episode|part|book|volume)\s*(?:[\d.]+|[IVXLCMivxlcm]{1,8}\b)[^\n|]*/i.exec(page);
   if(!m) m = /第\s*[\d一二三四五六七八九十百千零]+\s*[章节回卷][^\n|]*/.exec(page);
   let t = m ? m[0] : "";
   // Drop the site name that follows the chapter title.
@@ -1854,7 +1862,7 @@ function webChapterTitle(parsed, url){
   if(t) return t;
   const n = /(?:chapter|chap|ch)[-_\/]?(\d+)/i.exec(url || "");
   if(n) return "Chapter " + n[1];
-  return safeTitle(parsed.title || "Chapter");
+  return cleanWebTitle(parsed.title || "Chapter") || "Chapter";
 }
 function syncWebChapter(){
   if(!S.book || S.book.source !== "web") return;
@@ -2570,6 +2578,15 @@ function collectChapterLinks(doc, base){
   return list;
 }
 function safeTitle(t){ return (t || '').replace(/[<>"&]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90); }
+/* Page <title> noise that novel sites add: "Read X", "X online free - Site". */
+function cleanWebTitle(t){
+  let s = safeTitle(t)
+    .replace(/^\s*read\s+(?=[a-z])/i, '')
+    .replace(/[\s\-–—:|,]*\s*online\s*free.*$/i, '')
+    .replace(/\s*[-–—|]\s*(?:novel\s*full|novelfull|read\s*novel\w*|freewebnovel|wuxia\w*|royal\s*road)\s*$/i, '')
+    .trim();
+  return s || safeTitle(t);
+}
 const LOGIN_RE = /(^|[\/_-])(log-?in|sign-?in|signin|sign-?up|register|auth)([\/_.-]|$)/i;
 
 function parseWebHtml(html, baseUrl){
@@ -2585,7 +2602,7 @@ function parseWebHtml(html, baseUrl){
   doc.querySelectorAll('header').forEach(h => { if(!h.closest('article,main,[id*="chapter"],[class*="chapter"]')) h.remove(); });
   const node = pickContentNode(doc, host);
   const h = node.querySelector('h1,h2,h3') || doc.querySelector('h1');
-  let title = safeTitle((h && h.textContent) || pageTitle) || host;
+  let title = cleanWebTitle((h && h.textContent) || pageTitle) || host;
   let text = cleanLines(nodeToText(node), host);
   if(text && !text.slice(0, 200).toLowerCase().includes(title.toLowerCase().slice(0, 30))) text = title + '\n\n' + text;
   return { title, pageTitle, text, next: nav.next, prev: nav.prev, chapterLinks, loginUrl };
