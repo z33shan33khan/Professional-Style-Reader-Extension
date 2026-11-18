@@ -191,6 +191,9 @@ const S = {
 };
 const pos = {u:0};
 let gen = 0, renderGen = 0, playbackStopToken = 0, voices = [], utStart = 0, boundaryTimer = null, editingRule = null, voiceFallbackURI = "";
+/* Voice locked for the current run (Google Translate English never switches), the
+   Chrome ~15s keep-alive ping, and the calibrated mobile word-highlight speed. */
+let lockedVoiceURI = "", keepAliveTimer = null, hlMsPerChar = 62;
 let hlFallbackTimer = null, lastBoundaryAt = 0, activeUtterance = null;
 let wdTimer = null, stallRetries = 0, wakeLock = null;
 let library = [], bookmarks = [];
@@ -697,8 +700,33 @@ function detectLang(){
   if(/[\u0900-\u097f]/.test(t)) return "hi";
   return "en";
 }
+function pickGoogleVoice(){
+  if(!voices.length) return null;
+  /* Google's English reading voices, best first: US, then the UK female/male
+     pair, then any other Google English voice, then any English voice. */
+  const googleEn = voices.filter(v => /^google/i.test(v.name || "") && /^en/i.test(v.lang || ""));
+  const byName = re => googleEn.find(v => re.test(v.name));
+  return byName(/google\s*us\s*english/i)
+    || byName(/google\s*uk\s*english\s*female/i)
+    || byName(/google\s*uk\s*english\s*male/i)
+    || googleEn[0]
+    || voices.find(v => /^en/i.test(v.lang || ""))
+    || null;
+}
 function pickVoice(){
   if(!voices.length) return null;
+  /* Continuous Google Translate English: resolve the voice once per run and
+     keep returning the same one so the reading never changes voice. */
+  if(S.settings.voiceURI === "google-translate-en"){
+    if(lockedVoiceURI){
+      const locked = voices.find(v => v.voiceURI === lockedVoiceURI);
+      if(locked) return locked;
+      lockedVoiceURI = "";
+    }
+    const v = pickGoogleVoice();
+    if(v){ lockedVoiceURI = v.voiceURI; return v; }
+    return voices.find(v => v.lang.toLowerCase().startsWith("en")) || voices[0] || null;
+  }
   if(voiceFallbackURI){
     const fallback = voices.find(v => v.voiceURI === voiceFallbackURI);
     if(fallback) return fallback;
@@ -734,6 +762,9 @@ function findFallbackVoice(failed){
     || null;
 }
 function retryWithFallbackVoice(ut, error){
+  /* The continuous Google Translate voice must never be swapped out — retry
+     with the same voice instead of silently changing to another one. */
+  if(S.settings.voiceURI === "google-translate-en") return false;
   const failed = ut && ut.voice;
   if(!failed || failed.voiceURI === voiceFallbackURI) return false;
   const fallback = findFallbackVoice(failed);
@@ -773,7 +804,9 @@ function startHlFallback(batch, g){
   let acc = 0;
   const starts = ws.map(w => {
     const s = acc;
-    acc += Math.max(130, (w.e - w.s) * 62 / rate);
+    /* Calibrated speed, estimated 12% slower than real speech so the highlight
+       trails the voice instead of running ahead of it on phones. */
+    acc += Math.max(130, (w.e - w.s) * hlMsPerChar / rate) * 1.12;
     return s;
   });
   let lastIdx = -1;
@@ -792,6 +825,16 @@ function startHlFallback(batch, g){
     hlFallbackTimer = setTimeout(tick, 120);
   };
   hlFallbackTimer = setTimeout(tick, 250);
+}
+/* Learn the real speaking speed from each finished batch so the mobile
+   word-estimator stops guessing (falls back to the built-in guess until the
+   first batch has been measured). */
+function calibrateHlSpeed(spoken, elapsedMs, rate){
+  if(!spoken || !elapsedMs || elapsedMs < 600 || spoken.length < 40) return;
+  const ms = elapsedMs / spoken.length * Math.max(0.5, rate || 1);
+  if(Number.isFinite(ms) && ms > 5 && ms < 400){
+    hlMsPerChar = hlMsPerChar ? hlMsPerChar * 0.7 + ms * 0.3 : ms;
+  }
 }
 /* ---------- Piper AI voices: offline neural TTS running on bundled WASM ---------- */
 function isPiperVoice(){
@@ -866,6 +909,7 @@ async function piperSpeak(batch, g){
     URL.revokeObjectURL(url);
     if(piperAudio === au) piperAudio = null;
     stopHlFallback();
+    calibrateHlSpeed(batch.spoken, performance.now() - utStart, clamp(S.settings.rate, 0.5, 4));
     if(g !== gen) return;
     stallRetries = 0;
     pos.u = batch.endIndex; nextUnit();
@@ -884,6 +928,7 @@ async function piperSpeak(batch, g){
 function restartSpeech(){
   gen++; const g = gen;
   stopHlFallback();
+  clearInterval(keepAliveTimer); keepAliveTimer = null;
   piperStop(); piperQueue = [];
   clearTimeout(boundaryTimer);
   const active = speechSynthesis.speaking || speechSynthesis.pending;
@@ -904,7 +949,7 @@ function buildSpeechBatch(startIndex){
     const transformed = speechTransform(unit.text, unit.start || 0);
     const part = transformed.spoken;
     const separator = spoken && part && !/\s$/.test(spoken) && !/^\s/.test(part) ? " " : "";
-    if(units.length && spoken.length + separator.length + part.length > 480) break;
+    if(units.length && spoken.length + separator.length + part.length > 240) break;
     units.push(unit); endIndex = i;
     if(separator){ spoken += separator; map.push(unit.start || 0); }
     spoken += part; map.push(...transformed.map);
@@ -962,7 +1007,9 @@ function speakUnit(retryAttempt){
   };
   ut.onend = () => {
     clearTimeout(boundaryTimer); stopHlFallback(); clearTimeout(wdTimer); stallRetries = 0;
+    if(g === gen){ clearInterval(keepAliveTimer); keepAliveTimer = null; }
     if(activeUtterance === ut) activeUtterance = null;
+    if(started) calibrateHlSpeed(spoken, performance.now() - utStart, S.settings.rate);
     if(g === gen){ pos.u = batch.endIndex; nextUnit(); }
   };
   ut.onerror = e => {
@@ -970,6 +1017,7 @@ function speakUnit(retryAttempt){
     if(activeUtterance === ut) activeUtterance = null;
     clearTimeout(wdTimer);
     if(g !== gen) return;
+    clearInterval(keepAliveTimer); keepAliveTimer = null;
     if(e.error === "interrupted" || e.error === "canceled"){
       // the system (not the user) cut the speech off: retry, then move on
       if(S.playing && !S.paused){
@@ -986,6 +1034,13 @@ function speakUnit(retryAttempt){
   try{ speechSynthesis.speak(ut); }
   catch(e){ if(retryWithFallbackVoice(ut, e.message)) return; setStatus("Speech failed: " + e.message); return; }
   setStatus("Reading");
+  // Chrome cuts utterances off after ~15 seconds of text; a gentle pause/resume
+  // ping every 9s keeps the synthesis alive so this same voice reads on
+  // indefinitely. The ping backs off while the reader is paused.
+  keepAliveTimer = setInterval(() => {
+    if(g !== gen || !S.playing || S.paused){ clearInterval(keepAliveTimer); keepAliveTimer = null; return; }
+    try{ if(speechSynthesis.speaking && !speechSynthesis.paused){ speechSynthesis.pause(); speechSynthesis.resume(); } }catch(e){}
+  }, 9000);
   // Watchdog: if the browser never ends the utterance, recover instead of freezing.
   const wd = () => {
     if(g !== gen || !S.playing || S.paused) return;
@@ -1014,7 +1069,13 @@ function nextUnit(){
   } else chapterFinished();
 }
 async function chapterFinished(){
-  if(S.settings.autoContinue){
+  /* Local books follow the reader-row checkbox; web chapters additionally
+     follow the web-toolbar checkbox (both default to continuing, so a run
+     only ever stops when one of them says so — or on the last chapter). */
+  const cont = S.book && S.book.source === "web"
+    ? (S.settings.autoContinue && S.settings.webAutoContinue !== false)
+    : S.settings.autoContinue;
+  if(cont){
     if(S.book && S.book.source !== "web" && S.chapterIdx + 1 < S.book.chapters.length){
       toast("Continuing to the next chapter…");
       loadChapter(S.chapterIdx + 1, {autoplay:true});
@@ -1070,14 +1131,18 @@ function resumePlayback(){
   }
   updateTransport(); setStatus("Reading");
 }
-function stopPlayback(){
+function stopPlayback(opts){
+  /* opts.keepCinema: the run is being moved to another chapter of the same
+     book — tear down the speech but leave the lights-off reading mode up. */
+  const keepCinema = !!(opts && opts.keepCinema);
   gen++; playbackStopToken++; clearTimeout(wdTimer);
   stopHlFallback();
+  clearInterval(keepAliveTimer); keepAliveTimer = null;
   piperStop(); piperQueue = [];
   activeUtterance = null;
   try{ speechSynthesis.cancel(); }catch(e){}
   S.playing = false; S.paused = false; S.needRespeak = false;
-  if(document.body.classList.contains("cinema")) cinemaOff();
+  if(!keepCinema && document.body.classList.contains("cinema")) cinemaOff();
   clearHighlights(); updateTransport(); setStatus("Ready"); updateStats();
 }
 function seekSentence(d){
@@ -2013,7 +2078,10 @@ function mergeWebBookDuplicates(){
 function openBook(id, opts = {}){
   const book = library.find(b => b.id === id);
   if(!book){ toast("That book is no longer in your library."); return; }
-  stopPlayback();
+  /* A TOC jump to another chapter of the book that is being read right now
+     must not stop the read-aloud — only the Stop button ends a run. */
+  const keepReading = S.playing && !S.paused && S.book && S.book.id === id;
+  stopPlayback(keepReading ? { keepCinema: true } : undefined);
   S.book = book; S.mode = "reader";
   let prog = {};
   try{ prog = JSON.parse(localStorage.getItem("upr.progress") || "{}")[id] || {}; }catch(e){}
@@ -2029,7 +2097,7 @@ function openBook(id, opts = {}){
   try{ localStorage.setItem("upr.lastBook", id); }catch(e){}
   $("docSub").textContent = book.title;
   renderPage(); switchPane("reader");
-  if(opts.autoplay){ S.playing = true; updateTransport(); restartSpeech(); }
+  if(opts.autoplay || keepReading){ S.playing = true; S.paused = false; updateTransport(); restartSpeech(); }
 }
 function loadChapter(i, opts = {}){
   if(!S.book) return;
@@ -2230,7 +2298,7 @@ async function importFiles(files){
         step(55, "Finding chapters…");
         if(/\.html?$/i.test(f.name)){
           const doc = new DOMParser().parseFromString(text, "text/html");
-          doc.querySelectorAll("script,style,noscript,svg").forEach(el => el.remove());
+          doc.querySelectorAll("script,style,noscript,svg,img,figcaption,iframe,video,audio").forEach(el => el.remove());
           chapters = splitChapters((doc.body.innerText || doc.body.textContent || "").trim());
         } else chapters = splitChapters(text);
       }
@@ -2294,7 +2362,7 @@ async function readEpub(buf, onProgress){
       const path = opfDir + href.split("#")[0];
       const html = await readEntry(path);
       const doc = new DOMParser().parseFromString(html, "text/html");
-      doc.querySelectorAll("script,style,nav,svg").forEach(el => el.remove());
+      doc.querySelectorAll("script,style,nav,svg,img,figcaption,iframe,video,audio").forEach(el => el.remove());
       const paras = (doc.body.innerText || doc.body.textContent || "").split(/\n+/).map(t => t.trim()).filter(Boolean);
       if(paras.join(" ").trim().length > 40){
         const h = doc.querySelector("h1,h2,h3");
@@ -2996,7 +3064,10 @@ async function loadWebBook(url, opts = {}){
 }
 
 function openWebBookObject(book, opts = {}){
-  stopPlayback();
+  /* Continuing an active read into the next web chapter (keepId + still
+     playing) keeps the run going instead of stopping it. */
+  const keepReading = !!(opts.keepId && S.playing && !S.paused && S.book && S.book.id === opts.keepId);
+  stopPlayback(keepReading ? { keepCinema: true } : undefined);
   const saved = persistWebBook(book, opts.keepId);
   S.book = saved.book; S.mode = 'reader';
   S.chapterIdx = saved.chapterIdx;
@@ -3004,7 +3075,7 @@ function openWebBookObject(book, opts = {}){
   buildPages(); S.pageIdx = 0; pos.u = 0;
   $('docSub').textContent = S.book.title;
   renderPage(); saveProgress(); switchPane('reader');
-  if(opts.autoplay && ttsOK){ S.playing = true; updateTransport(); restartSpeech(); }
+  if((opts.autoplay || keepReading) && ttsOK){ S.playing = true; S.paused = false; updateTransport(); restartSpeech(); }
 }
 
 function openSignInWindow(url){
@@ -3765,6 +3836,7 @@ function loadVoices(){
   if(!voices.length) return;
   const sel = $("voiceSelect");
   sel.innerHTML = '<option value="auto">Auto — match language</option>' +
+    '<option value="google-translate-en">🌟 Google Translate English (continuous)</option>' +
     voices.slice().sort((a,b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name))
       .map(v => `<option value="${esc(v.voiceURI)}">${esc(v.name)} — ${esc(v.lang)}${v.default ? " • default" : ""}</option>`).join("");
   /* Keep the dropdown in sync when a Piper AI voice is the active choice */
@@ -4355,7 +4427,7 @@ function init(){
   });
 
   /* Voice & appearance */
-  $("voiceSelect").onchange = e => { voiceFallbackURI = ""; S.settings.voiceURI = e.target.value; saveSettings(); piperWarmUp(); if(S.playing && !S.paused) restartSpeech(); };
+  $("voiceSelect").onchange = e => { voiceFallbackURI = ""; lockedVoiceURI = ""; S.settings.voiceURI = e.target.value; saveSettings(); piperWarmUp(); if(S.playing && !S.paused) restartSpeech(); };
   $("speechLang").onchange = e => { voiceFallbackURI = ""; S.settings.speechLang = e.target.value; saveSettings(); if(S.playing && !S.paused) restartSpeech(); };
   $("rateRange").oninput = e => { S.settings.rate = +e.target.value; saveSettings(); applyAppearance(); updateStats(); };
   $("rateRange").onchange = () => { if(S.playing && !S.paused) restartSpeech(); };
