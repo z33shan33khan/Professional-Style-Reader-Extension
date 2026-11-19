@@ -800,31 +800,39 @@ function startHlFallback(batch, g){
   if(!["word","sentence+word","paragraph+word"].includes(S.settings.highlight)) return;
   const ws = wordSpans(batch.spoken || "");
   if(ws.length < 2) return;
-  const rate = Math.max(0.5, S.settings.rate) || 1;
-  let t0 = performance.now(), pauseAnchor = 0;
+  /* Google's engine plays at rate × 1.1, so its content clock advances by that
+     extra factor as well. */
+  const rateAdjust = isGoogleTranslateVoice() ? 1.1 : 1;
+  /* Word boundaries live in CONTENT milliseconds (time at 1× speed) and the
+     clock is advanced by the CURRENT rate on every tick — so raising or
+     lowering the speed takes effect on the very next tick, the position is
+     preserved, and the highlight never jumps back to the start. */
   let acc = 0;
   const starts = ws.map(w => {
     const s = acc;
     /* Calibrated speed, estimated 12% slower than real speech so the highlight
        trails the voice instead of running ahead of it on phones. */
-    acc += Math.max(130, (w.e - w.s) * hlMsPerChar / rate) * 1.12;
+    acc += Math.max(130, (w.e - w.s) * hlMsPerChar) * 1.12;
     return s;
   });
-  let lastIdx = -1;
+  let lastIdx = -1, contentMs = 0, lastTick = performance.now();
   const tick = () => {
     if(g !== gen || !S.playing) return;
-    if(S.paused){ pauseAnchor = performance.now(); hlFallbackTimer = setTimeout(tick, 120); return; }
-    if(pauseAnchor){ t0 += performance.now() - pauseAnchor; pauseAnchor = 0; }
-    if(performance.now() - lastBoundaryAt > 900){
-      const elapsed = performance.now() - t0;
+    const now = performance.now();
+    /* Paused: freeze the clock so resume picks up exactly where it left off. */
+    if(S.paused){ lastTick = now; hlFallbackTimer = setTimeout(tick, 120); return; }
+    const rate = Math.max(0.5, S.settings.rate) || 1;
+    if(now - lastBoundaryAt > 900){
+      contentMs += (now - lastTick) * rate * rateAdjust;
       let i = 0;
-      while(i + 1 < ws.length && starts[i + 1] <= elapsed) i++;
+      while(i + 1 < ws.length && starts[i + 1] <= contentMs) i++;
       if(i !== lastIdx){
         lastIdx = i;
         const orig = batch.map[ws[i].s];
         highlightUnit(speechUnitForOffset(batch.units, orig), orig, false);
       }
     }
+    lastTick = now;
     hlFallbackTimer = setTimeout(tick, 120);
   };
   hlFallbackTimer = setTimeout(tick, 250);
@@ -950,29 +958,104 @@ function googleSplitPieces(text, limit = 200){
   if(rest) pieces.push(rest);
   return pieces;
 }
-/* Read Aloud's exact Google Translate synthesis call (js/google-translate.js):
-   POST the jQ1olc RPC and unwrap the length-prefixed envelope into a data
-   URL. WIZ tokens are not required — an anonymous POST returns the MP3. */
-async function googleSynthesize(text){
-  const fReq = JSON.stringify([[["jQ1olc", JSON.stringify([text, "en", null]), null, "generic"]]]);
+/* Read Aloud never sends an anonymous RPC: it fetches Google's WIZ global data
+   once an hour (js/google-translate.js) and puts f.sid/bl/at into every
+   batchexecute call. Without those session params Google rejects the request,
+   so the same flow is reproduced here — including the one-shot refresh when
+   Google answers 400/403. */
+let gtWizCache = null, gtWizInflight = null, gtBatchNo = 0, gtChain = Promise.resolve();
+function gtGrab(html, re){ const m = html.match(re); return m ? m[1] : null; }
+async function getGoogleWiz(force){
+  if(!force && gtWizCache && gtWizCache.expire > Date.now()) return gtWizCache;
+  if(!force && gtWizInflight) return gtWizInflight;
+  const p = (async () => {
+    try{
+      const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => { try{ ctrl.abort(); }catch(e){} }, 8000) : null;
+      const res = await fetch("https://translate.google.com/", { referrerPolicy: "no-referrer", signal: ctrl ? ctrl.signal : undefined });
+      if(timer) clearTimeout(timer);
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      const html = await res.text();
+      const wiz = {
+        sid: gtGrab(html, /"FdrFJe":"(.*?)"/),
+        bl: gtGrab(html, /"cfb2h":"(.*?)"/),
+        at: gtGrab(html, /"SNlM0e":"(.*?)"/),
+        expire: Date.now() + 3600 * 1000
+      };
+      if(!wiz.sid) throw new Error("wiz not found");
+      gtWizCache = wiz;
+      return wiz;
+    } finally { gtWizInflight = null; }
+  })();
+  gtWizInflight = p;
+  return p;
+}
+async function gtAttempt(text, lang, wiz){
+  const query = {
+    rpcids: "jQ1olc",
+    hl: "en",
+    "soc-app": 1,
+    "soc-platform": 1,
+    "soc-device": 1,
+    _reqid: (++gtBatchNo) * 100000 + Math.floor(1000 + Math.random() * 9000),
+    rt: "c"
+  };
+  const body = { "f.req": JSON.stringify([[["jQ1olc", JSON.stringify([text, lang, null]), null, "generic"]]]) };
+  if(wiz){
+    if(wiz.sid) query["f.sid"] = wiz.sid;
+    if(wiz.bl) query.bl = wiz.bl;
+    if(wiz.at) body.at = wiz.at;
+  }
+  const qs = Object.keys(query).map(k => encodeURIComponent(k) + "=" + encodeURIComponent(query[k])).join("&");
+  const form = Object.keys(body).map(k => encodeURIComponent(k) + "=" + encodeURIComponent(body[k])).join("&");
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => { try{ ctrl.abort(); }catch(e){} }, 15000) : null;
   try{
-    const res = await fetch("https://translate.google.com/_/TranslateWebserverUi/data/batchexecute?rpcids=jQ1olc&hl=en&rt=c", {
+    const res = await fetch("https://translate.google.com/_/TranslateWebserverUi/data/batchexecute?" + qs, {
       method: "POST",
-      headers: {"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
-      body: "f.req=" + encodeURIComponent(fReq),
+      headers: {"Content-Type": "application/x-www-form-urlencoded"},
+      body: form,
+      referrerPolicy: "no-referrer",
       signal: ctrl ? ctrl.signal : undefined
     });
-    if(!res.ok) throw new Error("HTTP " + res.status);
-    const body = await res.text();
-    const m = body.match(/\d+/);
+    if(!res.ok){ const e = new Error("HTTP " + res.status); e.status = res.status; throw e; }
+    const resBody = await res.text();
+    const m = resBody.match(/\d+/);
     if(!m) throw new Error("bad response");
-    const envelopes = JSON.parse(body.substr(m.index + m[0].length, Number(m[0])));
+    const envelopes = JSON.parse(resBody.substr(m.index + m[0].length, Number(m[0])));
     const payload = JSON.parse(envelopes[0][2]);
     if(!payload || !payload[0]) throw new Error("no audio");
     return "data:audio/mpeg;base64," + payload[0];
   } finally { if(timer) clearTimeout(timer); }
+}
+function gtGap(){ return new Promise(r => setTimeout(r, 150)); }
+async function gtRun(text, lang){
+  let wiz = null;
+  try{ wiz = await getGoogleWiz(false); }catch(e){ wiz = null; }
+  try{
+    return await gtAttempt(text, lang, wiz);
+  }catch(e){
+    /* Google rejects a stale or missing session — refresh once and retry.
+       Never loops: a second failure is thrown to the caller, which falls back
+       to the system voice. */
+    if(e && (e.status === 400 || e.status === 403)){
+      gtWizCache = null;
+      /* 403 is Google throttling bursts — give it a moment to release before
+         the refreshed attempt, so a short rate-limit does not drop the voice. */
+      await new Promise(r => setTimeout(r, 2000));
+      let fresh = null;
+      try{ fresh = await getGoogleWiz(true); }catch(err){ fresh = null; }
+      if(fresh || wiz) return await gtAttempt(text, lang, fresh || wiz);
+    }
+    throw e;
+  }
+}
+/* One request at a time with a short gap: Google throttles bursts, and
+   batches are short enough that serialising costs nothing noticeable. */
+function googleSynthesize(text, lang = "en"){
+  const run = gtChain.then(() => gtRun(text, lang), () => gtRun(text, lang));
+  gtChain = run.then(gtGap, gtGap);
+  return run;
 }
 /* Keep up to two batches synthesized ahead so a slow request never leaves a
    silent gap between sentences (mirrors piperPrefetch). */
@@ -1022,7 +1105,9 @@ async function googleSpeak(batch, g){
   let pieceIdx = 0;
   const finish = () => {
     stopHlFallback();
-    calibrateHlSpeed(batch.spoken, performance.now() - utStart, clamp(S.settings.rate, 0.5, 4));
+    /* The batch played at rate × 1.1, so normalise the measured speed by that
+       factor too or every later estimate would run 10% fast. */
+    calibrateHlSpeed(batch.spoken, performance.now() - utStart, clamp(S.settings.rate, 0.5, 4) * 1.1);
     if(g !== gen) return;
     stallRetries = 0;
     pos.u = batch.endIndex; nextUnit();
@@ -4566,11 +4651,20 @@ function init(){
   /* Voice & appearance */
   $("voiceSelect").onchange = e => { voiceFallbackURI = ""; lockedVoiceURI = ""; S.settings.voiceURI = e.target.value; saveSettings(); piperWarmUp(); if(S.playing && !S.paused) restartSpeech(); };
   $("speechLang").onchange = e => { voiceFallbackURI = ""; S.settings.speechLang = e.target.value; saveSettings(); if(S.playing && !S.paused) restartSpeech(); };
+  /* Google's engine is one streaming audio element: push a speed change to it
+     straight away so the voice and the highlight following its clock change
+     together instead of at the next restart. Returns false when the current
+     voice needs the usual restart. */
+  function pushLiveGoogleRate(){
+    if(!googleAudio) return false;
+    try{ googleAudio.playbackRate = clamp(S.settings.rate, 0.5, 4) * 1.1; }catch(e){}
+    return true;
+  }
   $("rateRange").oninput = e => { S.settings.rate = +e.target.value; saveSettings(); applyAppearance(); updateStats(); };
-  $("rateRange").onchange = () => { if(S.playing && !S.paused) restartSpeech(); };
+  $("rateRange").onchange = () => { if(S.playing && !S.paused && !pushLiveGoogleRate()) restartSpeech(); };
   $("ratePresets").addEventListener("click", e => {
     const b = e.target.closest("[data-r]");
-    if(b){ S.settings.rate = +b.dataset.r; saveSettings(); applyAppearance(); updateStats(); if(S.playing && !S.paused) restartSpeech(); }
+    if(b){ S.settings.rate = +b.dataset.r; saveSettings(); applyAppearance(); updateStats(); if(S.playing && !S.paused && !pushLiveGoogleRate()) restartSpeech(); }
   });
   $("fontInput").onchange = e => { S.settings.font = e.target.value.trim() || "Literata"; saveSettings(); applyAppearance(); };
   $("sizeRange").oninput = e => { S.settings.size = +e.target.value; saveSettings(); applyAppearance(); };
