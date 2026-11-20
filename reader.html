@@ -147,6 +147,9 @@ main{max-width:980px;margin:0 auto;padding:18px 18px 130px;display:flex;flex-dir
 #content .hl-w{background:var(--hl-word);box-shadow:0 0 0 2px var(--hl-word);border-radius:3px;font-weight:600}
 #content .hl-s{background:var(--hl-sent);box-shadow:0 0 0 3px var(--hl-sent);border-radius:4px}
 #content p.hl-p{background:var(--hl-para);border-left-color:var(--jade)}
+/* Optional custom tint for the highlighted text itself (--hl-text set from
+   settings; falls back to the normal reading color). */
+#content .hl-w,#content .hl-s,#content p.hl-p{color:var(--hl-text,inherit)}
 /* Focus while reading: paragraphs wait their turn slightly dimmed, the
    narrated paragraph stays at full strength (plays only while speaking) */
 body.reading-active #content p{opacity:.58;transition:opacity .4s ease}
@@ -1000,6 +1003,9 @@ body.pip-window .reader-card{margin:54px auto 96px;max-width:900px;width:calc(10
           <option value="paragraph+word">Paragraph + Word</option>
         </select></div>
 
+      <div><label class="lbl" for="hlTextColor">Highlight text color</label>
+        <span style="display:flex;gap:8px;align-items:center"><input type="color" id="hlTextColor" value="#ffffff"><button type="button" class="btn small" id="hlTextColorReset" title="Go back to the normal text color">Default</button></span></div>
+
       <label class="check-row"><input type="checkbox" id="autoScroll" checked> Auto-scroll to follow the reading</label>
 
       <div><label class="lbl" for="translateSelect">Auto-translate pages</label>
@@ -1212,7 +1218,7 @@ body.pip-window .reader-card{margin:54px auto 96px;max-width:900px;width:calc(10
 <div id="toasts"></div>
 <input type="file" id="fileInput" accept=".txt,.md,.html,.htm,.epub,.pdf" multiple hidden>
 
-<script src="js/reader.js?v=8"></script>
+<script src="js/reader.js?v=9"></script>
 <script type="module" src="js/piper.js?v=2"></script>
 </body>
 </html>

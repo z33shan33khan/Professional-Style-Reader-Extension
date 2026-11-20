@@ -252,7 +252,7 @@ function speechTransform(text, baseOffset = 0){
 /* ---------- Settings ---------- */
 const DEFAULTS = {
   voiceURI:"auto", speechLang:"auto", rate:1, font:"Literata", size:19,
-  highlight:"sentence+word", autoScroll:true, autoTranslate:"off",
+  highlight:"sentence+word", hlTextColor:"", autoScroll:true, autoTranslate:"off",
   translateStyle:"simple", translateEngine:"google", genderOn:true, genderFix:{},
   autoContinue:true, webAutoContinue:true, theme:"dark",
   readerTheme:"dark", readerBg:"#050505", readerText:"#ffffff",
@@ -312,7 +312,7 @@ let gen = 0, renderGen = 0, playbackStopToken = 0, voices = [], utStart = 0, bou
 /* Voice locked for the current run (Google Translate English never switches), the
    Chrome ~15s keep-alive ping, and the calibrated mobile word-highlight speed. */
 let lockedVoiceURI = "", keepAliveTimer = null, hlMsPerChar = 62;
-let hlFallbackTimer = null, lastBoundaryAt = 0, activeUtterance = null;
+let hlFallbackTimer = null, lastBoundaryAt = 0, activeUtterance = null, hlLastBatch = null;
 let wdTimer = null, stallRetries = 0, wakeLock = null;
 let library = [], bookmarks = [];
 try{ library = JSON.parse(localStorage.getItem("upr.library") || "[]"); }catch(e){}
@@ -913,9 +913,13 @@ function speechUnitForOffset(units, offset){
    events can stall after the first few words. Estimate the word being spoken
    from elapsed time whenever the boundary stream goes stale so the highlight
    keeps moving there too (Google Translate audio never sends any). */
-function startHlFallback(batch, g){
+function startHlFallback(batch, g, fromOffset){
   stopHlFallback();
-  if(!["word","sentence+word","paragraph+word"].includes(S.settings.highlight)) return;
+  hlLastBatch = batch;
+  /* Every highlighting mode needs this estimator when the engine sends no
+     boundary events (Google Translate audio never sends any) — without it the
+     sentence/paragraph-only modes would sit on the first one forever. */
+  if(!["word","sentence","sentence+word","paragraph","paragraph+word"].includes(S.settings.highlight)) return;
   const ws = wordSpans(batch.spoken || "");
   if(ws.length < 2) return;
   /* Google's engine plays at rate × 1.1, so its content clock advances by that
@@ -934,6 +938,14 @@ function startHlFallback(batch, g){
     return s;
   });
   let lastIdx = -1, contentMs = 0, lastTick = performance.now();
+  /* Restarting mid-batch (a highlighting-mode switch while the voice is
+     already partway through) must not rewind to the batch's first word —
+     seed the clock at the unit currently being spoken. */
+  if(fromOffset != null && batch.map){
+    let idx = 0;
+    while(idx + 1 < ws.length && (batch.map[ws[idx].s] || 0) < fromOffset) idx++;
+    contentMs = starts[idx] || 0;
+  }
   const tick = () => {
     if(g !== gen || !S.playing) return;
     const now = performance.now();
@@ -4074,6 +4086,7 @@ function applyAppearance(){
   $("rateVal").textContent = S.settings.rate.toFixed(2) + "×";
   document.querySelectorAll("#ratePresets button").forEach(b => b.classList.toggle("active", +b.dataset.r === S.settings.rate));
   $("highlightSelect").value = S.settings.highlight;
+  applyHlTextColor();
   $("autoScroll").checked = S.settings.autoScroll;
   $("autoContinue").checked = S.settings.autoContinue;
   document.body.dataset.theme = S.settings.theme;
@@ -4100,6 +4113,17 @@ function applyReaderColors(){
   $("readerBgColor").value = validColor(S.settings.readerBg) ? S.settings.readerBg : "#050505";
   $("readerTextColor").value = validColor(S.settings.readerText) ? S.settings.readerText : "#ffffff";
   syncPip();
+}
+/* Optional custom tint for the highlighted text itself; empty means the
+   normal reading color. */
+function applyHlTextColor(){
+  const v = S.settings.hlTextColor;
+  const ok = /^#[0-9a-f]{6}$/i.test(v || "");
+  const root = document.documentElement;
+  if(ok) root.style.setProperty("--hl-text", v);
+  else root.style.removeProperty("--hl-text");
+  const input = $("hlTextColor");
+  if(input) input.value = ok ? v : "#ffffff";
 }
 
 /* ---------- Speech-fixes UI ---------- */
@@ -4806,7 +4830,17 @@ function init(){
     $("ambientVolumeValue").textContent = Math.round(S.settings.ambientVolume * 100) + "%";
     saveSettings(); syncAmbientMusic();
   };
-  $("highlightSelect").onchange = e => { S.settings.highlight = e.target.value; saveSettings(); const u = currentUnit(); if(u && (S.playing || $("content").querySelector(".hl-w,.hl-s,.hl-p"))) highlightUnit(u, u.start, false); };
+  $("highlightSelect").onchange = e => {
+    S.settings.highlight = e.target.value; saveSettings();
+    const u = currentUnit();
+    if(u && (S.playing || $("content").querySelector(".hl-w,.hl-s,.hl-p"))) highlightUnit(u, u.start, false);
+    /* Sentence/paragraph-only modes may not have had the estimator running —
+       start it for the new mode (seeded at the current unit) so the highlight
+       keeps following a voice that sends no boundary events. */
+    if(S.playing && !S.paused && hlLastBatch && !hlFallbackTimer) startHlFallback(hlLastBatch, gen, u && u.start);
+  };
+  $("hlTextColor").oninput = e => { S.settings.hlTextColor = e.target.value; saveSettings(); applyHlTextColor(); };
+  $("hlTextColorReset").onclick = () => { S.settings.hlTextColor = ""; saveSettings(); applyHlTextColor(); };
   $("autoScroll").onchange = e => { S.settings.autoScroll = e.target.checked; saveSettings(); };
   $("translateSelect").onchange = e => {
     S.settings.autoTranslate = e.target.value; saveSettings(); syncTranslateOptions();
