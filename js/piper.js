@@ -225,6 +225,13 @@ function mkSession(voiceId){
   });
 }
 
+async function speakNow(text, voiceId, onProgress){
+  loadProgress = onProgress || null;
+  try{
+    const s = await mkSession(voiceId);
+    return await s.predict(text);
+  } finally{ loadProgress = null; }
+}
 const bridge = {
   /* Is this voice id part of the piper-voices catalogue? */
   has: id => !!PATH_MAP[id],
@@ -241,13 +248,16 @@ const bridge = {
     loadProgress = onProgress || null;
     try{ return await mkSession(voiceId); } finally{ loadProgress = null; }
   },
-  /* Synthesize text → WAV Blob */
-  async speak(text, voiceId, onProgress){
-    loadProgress = onProgress || null;
-    try{
-      const s = await mkSession(voiceId);
-      return await s.predict(text);
-    } finally{ loadProgress = null; }
+  /* Synthesize text → WAV Blob. One inference at a time: concurrent predicts
+     interleaved the shared phonemizer module (garbled/missed batches) and
+     stacked main-thread stalls — the "Piper hangs" symptom. The queue in
+     reader.js is eager, so serializing here keeps batches in order. */
+  _chain: Promise.resolve(),
+  speak(text, voiceId, onProgress){
+    const run = bridge._chain.then(() => speakNow(text, voiceId, onProgress),
+                                    () => speakNow(text, voiceId, onProgress));
+    bridge._chain = run.then(() => {}, () => {});
+    return run;
   },
   async remove(voiceId){ await remove(voiceId); }
 };

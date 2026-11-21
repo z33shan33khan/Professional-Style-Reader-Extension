@@ -384,28 +384,44 @@ const _TtsSession = class _TtsSession {
   async predict(text) {
     await this.waitReady;
     const input = JSON.stringify([{ text: text.trim() }]);
-    const phonemeIds = await new Promise(async (resolve) => {
-      const module = await __privateGet(this, _createPiperPhonemize).call(this, {
-        print: (data) => {
-          resolve(JSON.parse(data).phoneme_ids);
-        },
-        printErr: (message) => {
-          throw new Error(message);
-        },
-        locateFile: (url) => {
-          if (url.endsWith(".wasm")) return __privateGet(this, _wasmPaths).piperWasm;
-          if (url.endsWith(".data")) return __privateGet(this, _wasmPaths).piperData;
-          return url;
-        }
-      });
-      module.callMain([
-        "-l",
-        __privateGet(this, _modelConfig).espeak.voice,
-        "--input",
-        input,
-        "--espeak_data",
-        "/espeak-ng-data"
-      ]);
+    const phonemeIds = await new Promise((resolve, reject) => {
+      let settled = false;
+      const done = (fn, v) => {
+        if (settled) return;
+        settled = true;
+        fn(v);
+      };
+      /* FIXED: the executor used to be `async`, so a throw (printErr fired on
+         any espeak stderr line) rejected a promise nobody awaited and this
+         `await` NEVER settled — the reader hung on "generating…" forever.
+         espeak warnings are non-fatal: printErr must never abort synthesis,
+         and a run that produced no phoneme output fails fast instead. */
+      (async () => {
+        const module = await __privateGet(this, _createPiperPhonemize).call(this, {
+          print: (data) => {
+            try {
+              done(resolve, JSON.parse(data).phoneme_ids);
+            } catch (e) {
+              done(reject, e);
+            }
+          },
+          printErr: () => {},
+          locateFile: (url) => {
+            if (url.endsWith(".wasm")) return __privateGet(this, _wasmPaths).piperWasm;
+            if (url.endsWith(".data")) return __privateGet(this, _wasmPaths).piperData;
+            return url;
+          }
+        });
+        module.callMain([
+          "-l",
+          __privateGet(this, _modelConfig).espeak.voice,
+          "--input",
+          input,
+          "--espeak_data",
+          "/espeak-ng-data"
+        ]);
+        done(reject, new Error("phonemization produced no output"));
+      })().catch((e) => done(reject, e));
     });
     const speakerId = 0;
     const sampleRate = __privateGet(this, _modelConfig).audio.sample_rate;
